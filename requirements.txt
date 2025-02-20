@@ -1,0 +1,11 @@
+discord.py
+httpx
+openai>=1.12.0
+pyyaml
+numpy>=1.26.4
+scikit-learn
+chromadb>=0.4.0
+tiktoken
+notion-client
+python-dotenv
+audioop-lts
