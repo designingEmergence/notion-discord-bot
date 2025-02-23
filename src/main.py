@@ -7,7 +7,7 @@ from bot.bot import NotionBot
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Change to DEBUG
+    level=logging.INFO,  # Change to DEBUG
     format='%(levelname)s: %(message)s',  # Simplified format
     handlers=[
         logging.StreamHandler(sys.stdout),

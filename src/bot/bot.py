@@ -43,6 +43,10 @@ class NotionBot(commands.Bot):
         self.openai_client = AsyncOpenAI()
         self.logger.info("NotionBot initialization complete")
 
+        @self.tree.command(name="sync", description="Sync Notion content to vector store")
+        async def sync(interaction: discord.Interaction):
+            await sync_notion(interaction, self)
+
     async def setup_hook(self):
         self.logger.info("syncing commands...")
         try:
@@ -114,6 +118,8 @@ class NotionBot(commands.Bot):
         self.logger.debug(f"Conversation: {conversation}")
         self.logger.debug(f"Relevant docs: {relevant_docs}")
         return relevant_docs, conversation
+    
+
         
 
     async def on_message(self, message):
@@ -159,35 +165,35 @@ class NotionBot(commands.Bot):
             else:
                 await message.reply(("Hello! Ask me anything about your Notion content!")) #TODO make configurable
 
+
+
+# Move sync command outside of Bot Class
+
+async def sync_notion(interaction: discord.Interaction, bot : NotionBot):
+    """Sync Notion content to vector store (Admin only)"""
+    await interaction.response.defer()
+
+    try:
+        async def progress_callback(msg: str):
+            await interaction.followup.send(msg)
+
+        sync_results = await sync_notion_content(
+            notion_client=bot.notion_client,
+            vector_store=bot.vector_store,
+            database_id=os.getenv("NOTION_DATABASE_ID"),
+            progress_callback=progress_callback
+        )
+
+        # Show detailed results
+        result_message = (
+            f"✅ Sync completed!\n"
+            f"📝 Added: {sync_results['added']} pages\n"
+            f"🔄 Updated: {sync_results['updated']} pages\n"
+            f"🗑️ Deleted: {sync_results['deleted']} pages\n"
+            f"📚 Total pages: {sync_results['total']}"
+        )
         
-    @app_commands.command(name="sync")
-    @admin_only()
-    async def sync(self, interaction: discord.Interaction):
-        """Sync Notion content to vector store (Admin only)"""
-        await interaction.response.defer()
-
-        try:
-            async def progress_callback(msg: str):
-                await interaction.followup.send(msg)
-
-
-            sync_results = await sync_notion_content(
-                notion_client=self.notion_client,
-                vector_store=self.vector_store,
-                database_id=os.getenv("NOTION_DATABASE_ID"),
-                progress_callback=progress_callback
-            )
-
-            # Show detailed results
-            result_message = (
-                f"✅ Sync completed!\n"
-                f"📝 Added: {sync_results['added']} pages\n"
-                f"🔄 Updated: {sync_results['updated']} pages\n"
-                f"🗑️ Deleted: {sync_results['deleted']} pages\n"
-                f"📚 Total pages: {len(pages)}"
-            )
-            
-            await interaction.followup.send(content=result_message)
-            
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error syncing content: {str(e)}")
+        await interaction.followup.send(content=result_message)
+        
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error syncing content: {str(e)}")
