@@ -21,7 +21,7 @@ def validate_env():
     required_vars = [
         'DISCORD_TOKEN',
         'NOTION_TOKEN',
-        'NOTION_DATABASE_ID',
+        'NOTION_RESOURCE_ID',
         'OPENAI_API_KEY',
         'ADMIN_IDS'
     ]

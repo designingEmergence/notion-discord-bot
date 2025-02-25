@@ -5,25 +5,34 @@ from rag.vectorstore import VectorStore
 
 
 logger = logging.getLogger(__name__)
+  
 
 async def sync_notion_content(
     notion_client: NotionClient,
     vector_store: VectorStore,
-    database_id: str,
+    resource_id: str,
     progress_callback: Optional[callable] = None,
     test_mode: bool = False,
     max_pages: int = 2
 ) -> Dict[str, int]:
     """Sync Notion database content to vector store"""
 
+    if not resource_id:
+        raise ValueError("Resource ID is required for syncing Notion content")
+    
     try:
-        logger.info("Starting sync with database ID: %s", database_id)
+        resource_type = await notion_client.detect_resource_type(resource_id)
+        if resource_type not in ["database", "page"]:
+            raise ValueError(f"Invalid resource type: {resource_type}")
 
         if progress_callback:
-            await progress_callback("🔄 Starting sync...")
+            try:
+                await progress_callback(f"🔄 Starting sync from {resource_id}...")
+            except Exception as e:
+                logger.error(f"Error in progress callback: {str(e)}")
         
         # Get all pages from Notion
-        pages = await notion_client.get_all_pages(database_id)
+        pages = await notion_client.get_resource_pages(resource_id)        
 
         if test_mode:
             pages = pages[:max_pages]
@@ -71,8 +80,23 @@ async def sync_notion_content(
                         title_array = title_property.get("title", [])
                         if title_array:
                             title = title_array[0].get("text", {}).get("content", "")
+
+                    if not title:
+                        if page.get("parent", {}).get("type") == "page_id":
+                            title = page.get("properties", {}).get("title", {}).get("title", [{}])[0].get("plain_text", "")
+                        else:
+                            title = (
+                                page.get("properties", {}).get("title", {}).get("title", [{}])[0].get("plain_text", "") or
+                                page.get("properties", {}).get("Title", {}).get("title", [{}])[0].get("plain_text", "") or
+                                page.get("icon", {}).get("emoji", "") + " " + page.get("properties", {}).get("title", {}).get("title", [{}])[0].get("plain_text", "")
+                            ).strip()
+
+                    if not title:
+                        logger.warning(f"Could not extract title for page {page['id']}")
+
                 except Exception as e:
                     logger.error(f"Error extracting title from page: {str(e)}")
+                    title = f"Untitled Page ({page['id']})"
                 
                 tags = []
                 try:
@@ -157,7 +181,7 @@ Content:
     
         # Debug log before syncing
         logger.debug(f"Final lengths - texts: {len(final_texts)}, ids: {len(final_ids)}, metadatas: {len(final_metadatas)}")
-        logger.debug(f"Sample document content: {texts[0][:100] if texts else 'No documents'}")
+        logger.debug(f"Sample document content: {texts[0][:100] if texts and len(texts) > 0 else 'No documents'}")
 
         if final_texts:
             logger.debug(f"First document type: {type(final_texts[0])}")

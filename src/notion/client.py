@@ -83,6 +83,24 @@ class NotionClient:
     async def retrieve_page(self, page_id: str) -> Dict[str, Any]:
         url = f"{self.base_url}/pages/{page_id}"
         return await self._make_requests("GET", url)
+    
+    async def retrieve_database(self, database_id: str) -> Dict[str, Any]:
+        url = f"{self.base_url}/databases/{database_id}"
+        return await self._make_requests("GET", url)
+    
+
+    async def detect_resource_type(self, resource_id: str) -> str:
+        """Detect the type of Notion resource (page, database, etc.)"""
+
+        try:
+            await self.retrieve_database(resource_id)
+            return "database"
+        except Exception:
+            try:
+                await self.retrieve_page(resource_id)
+                return "page"
+            except Exception as e:
+                raise ValueError(f"Invalid Notion resource ID or insufficient permissions: {str(e)}")
 
     async def query_database(
             self,
@@ -143,7 +161,19 @@ class NotionClient:
                 continue
         return "\n".join(content)
 
-    
+    async def get_resource_pages(self, resource_id: str) -> List[Dict]:
+        """Get all pages from a database or a single page."""
+        try:
+            resource_type = await self.detect_resource_type(resource_id)
+            self.logger.info(f"Detected resource type: {resource_type}")
+            if resource_type == "database":
+                return await self.get_all_pages(resource_id)
+            else:
+                return await self.get_page_and_subpages(resource_id)
+        except Exception as e:
+            self.logger.error(f"Error getting pages from resource {resource_id}: {str(e)}")
+            raise
+
     async def get_all_pages(self, database_id: str) -> List[Dict[str, Any]]:
         """Get all pages from a database with pagination handling."""
         all_pages = []
@@ -157,5 +187,41 @@ class NotionClient:
             next_cursor = response.get("next_cursor")
 
         return all_pages
+    
+    async def get_page_and_subpages(self, page_id: str) -> List[Dict]:
+        """Recursively get a page and all its subpages."""
+        pages = []
+        visited = set()
+
+    
+        async def recursive_get_page(current_page_id: str):
+            if current_page_id in visited:
+                return
+            visited.add(current_page_id)
+
+            try:
+                page = await self.retrieve_page(current_page_id)
+                pages.append(page)
+
+                blocks = await self.get_block_children(current_page_id)
                 
+                for block in blocks.get("results", []):
+                    block_type = block.get("type")
+                    self.logger.debug(f"Processing block type: {block_type}")
+
+                    if block_type == "child_page":
+                        child_page_id = block.get("id")
+                        await recursive_get_page(child_page_id)
+                    
+                    elif block_type == "child_database":
+                        database_id = block.get("id")
+                        database_pages = await self.get_all_pages(database_id)
+                        pages.extend(database_pages)
+            
+            except Exception as e:
+                self.logger.warning(f"Error processing page {current_page_id}: {str(e)}")
+
+        await recursive_get_page(page_id)
+        return pages
+
                     

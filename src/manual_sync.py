@@ -8,7 +8,7 @@ from notion.sync import sync_notion_content
 import logging
 
 logging.basicConfig(
-    level=logging.DEBUG,  # Change to DEBUG
+    level=logging.DEBUG,  # Change to DEBUG or INFO
     format='%(levelname)s: %(message)s',  # Simplified format
     handlers=[
         logging.StreamHandler(sys.stdout),
@@ -18,8 +18,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-if "NOTION_DATABASE_ID" in os.environ:
-            del os.environ["NOTION_DATABASE_ID"]
+if "NOTION_RESOURCE_ID" in os.environ:
+            del os.environ["NOTION_RESOURCE_ID"]
             load_dotenv(override=True)  # Add override=True
 logger = logging.getLogger(__name__)
 
@@ -36,9 +36,9 @@ async def main():
         results = await sync_notion_content(
             notion_client=notion_client,
             vector_store=vector_store,
-            database_id=os.getenv("NOTION_DATABASE_ID"),
+            resource_id=os.getenv("NOTION_RESOURCE_ID"),
             progress_callback=print_progress,
-            test_mode=True,
+            test_mode=False,
             max_pages=4
         )
 

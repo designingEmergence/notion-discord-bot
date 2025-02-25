@@ -169,18 +169,22 @@ class NotionBot(commands.Bot):
 
 # Move sync command outside of Bot Class
 
-async def sync_notion(interaction: discord.Interaction, bot : NotionBot):
+async def sync_notion(interaction: discord.Interaction, bot : NotionBot, resource_id: Optional[str]= None):
     """Sync Notion content to vector store (Admin only)"""
     await interaction.response.defer()
 
     try:
+
+        if not resource_id:
+            resource_id = os.getenv("NOTION_RESOURCE_ID")
+
         async def progress_callback(msg: str):
             await interaction.followup.send(msg)
 
         sync_results = await sync_notion_content(
             notion_client=bot.notion_client,
             vector_store=bot.vector_store,
-            database_id=os.getenv("NOTION_DATABASE_ID"),
+            resource_id=resource_id,
             progress_callback=progress_callback
         )
 
@@ -194,6 +198,8 @@ async def sync_notion(interaction: discord.Interaction, bot : NotionBot):
         )
         
         await interaction.followup.send(content=result_message)
-        
+
+    except ValueError as e:
+        await interaction.followup.send(f"❌ Invalid resource ID: {str(e)}")    
     except Exception as e:
         await interaction.followup.send(f"❌ Error syncing content: {str(e)}")
