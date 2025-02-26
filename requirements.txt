@@ -8,5 +8,4 @@ chromadb>=0.4.0
 tiktoken
 notion-client
 python-dotenv
-audioop-lts
 supervisor==4.2.5
