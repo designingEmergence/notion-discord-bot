@@ -4,6 +4,16 @@ import os
 import sys
 from dotenv import load_dotenv
 from bot.bot import NotionBot
+from aiohttp import web
+
+app = web.Application()
+routes = web.RouteTableDef()
+
+@routes.get("/")
+async def hello(request):
+    return web.Response(text="Bot is running!")
+
+app.add_routes(routes)
 
 # Configure logging
 logging.basicConfig(
@@ -42,8 +52,20 @@ async def main():
         logger.debug(f"Token loaded: {token}")  # Debug log token
         
         bot = NotionBot()
+
+        # Start both the bot and web server
+        web_task = web.TCPSite(
+            runner=web.AppRunner(app),
+            host='0.0.0.0',
+            port=int(os.getenv("PORT", 8080))
+        ).start()
+
         logger.info("Starting Notion Discord Bot...")
-        await bot.start(token)
+        
+        await asyncio.gather(
+            web_task,
+            bot.start(token)
+        )
         
     except Exception as e:
         logger.error(f"Error running bot: {str(e)}", exc_info=True)  # Add full traceback
