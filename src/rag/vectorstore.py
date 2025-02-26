@@ -17,6 +17,25 @@ class VectorStore:
     ):
         try:
             self.logger = logging.getLogger(__name__)
+
+            # Explicitly load environment variables
+            from dotenv import load_dotenv
+            load_dotenv()
+            
+            # Debug logging for environment variables
+            api_key = os.getenv("OPENAI_API_KEY")
+            self.logger.debug(f"OpenAI API Key present: {bool(api_key)}")
+            self.logger.debug(f"OpenAI API Key length: {len(api_key) if api_key else 0}")
+            
+            if not api_key:
+                # Try getting it directly from os.environ
+                api_key = os.environ.get("OPENAI_API_KEY")
+                self.logger.debug(f"Fallback - OpenAI API Key present: {bool(api_key)}")
+                
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY not found in environment")
+            
+
             # Initialize ChromaDB client
             os.makedirs(persist_directory, exist_ok=True)
             self.client = chromadb.PersistentClient(
@@ -26,10 +45,6 @@ class VectorStore:
                     is_persistent=True
                 )
             )
-
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not found in environment")
 
             # Set default embedding function if none provided
             if embedding_function is None:
@@ -42,7 +57,6 @@ class VectorStore:
                 self.embedding_function = embedding_function
 
             self.collection_name = collection_name or "notion_docs"
-            
             self.chunk_size = min(chunk_size, 6000)
 
             # Get or create collection
