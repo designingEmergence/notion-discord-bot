@@ -25,9 +25,16 @@ def admin_only():
 class NotionBot(commands.Bot):
     def __init__(self):
 
+        # Load environment variables first
+        load_dotenv()
+        
+        # Validate OpenAI API key is present
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+
         if "OPENAI_API_KEY" in os.environ:
             del os.environ["OPENAI_API_KEY"]
-            load_dotenv(override=True)  # Add override=True
+            load_dotenv(override=True)
 
         self.max_history = 3
         self.logger = logging.getLogger(__name__)

@@ -18,5 +18,8 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Create log directory
 RUN mkdir -p /var/log/supervisor
 
+# Ensure environment variables are passed to supervisor
+ENV PYTHONUNBUFFERED=1
+
 # Run supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
