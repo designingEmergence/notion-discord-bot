@@ -17,10 +17,6 @@ class VectorStore:
     ):
         try:
             self.logger = logging.getLogger(__name__)
-
-            # Explicitly load environment variables
-            from dotenv import load_dotenv
-            load_dotenv()
             
             # Debug logging for environment variables
             api_key = os.getenv("OPENAI_API_KEY")

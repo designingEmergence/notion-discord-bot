@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import sys
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 from bot.bot import NotionBot
 from aiohttp import web
 
@@ -44,7 +44,7 @@ def validate_env():
 
 async def main():
     # Load environment variables
-    load_dotenv(verbose=True)  # Add verbose flag
+    # load_dotenv(verbose=True)  # Add verbose flag
     
     try:
         validate_env()

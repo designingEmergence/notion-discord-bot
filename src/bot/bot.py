@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 from notion.client import NotionClient
 from notion.sync import sync_notion_content
 from rag.vectorstore import VectorStore
@@ -14,7 +14,7 @@ from typing import List, Dict, Any, Optional, Callable
 import logging
 import chromadb
 
-load_dotenv()
+# load_dotenv()
 
 def admin_only():
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -26,7 +26,7 @@ class NotionBot(commands.Bot):
     def __init__(self):
 
         # Load environment variables first
-        load_dotenv()
+        # load_dotenv()
         
         # Validate OpenAI API key is present
         if not os.getenv("OPENAI_API_KEY"):
@@ -34,7 +34,7 @@ class NotionBot(commands.Bot):
 
         if "OPENAI_API_KEY" in os.environ:
             del os.environ["OPENAI_API_KEY"]
-            load_dotenv(override=True)
+            # load_dotenv(override=True)
 
         self.max_history = 3
         self.logger = logging.getLogger(__name__)

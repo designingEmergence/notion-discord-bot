@@ -1,7 +1,7 @@
 import asyncio
 import os
 import sys
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 from notion.client import NotionClient
 from rag.vectorstore import VectorStore
 from notion.sync import sync_notion_content
@@ -24,7 +24,7 @@ if "NOTION_RESOURCE_ID" in os.environ:
 logger = logging.getLogger(__name__)
 
 async def main():
-    load_dotenv()
+    # load_dotenv()
 
     notion_client = NotionClient(api_key=os.getenv("NOTION_TOKEN"))
     vector_store = VectorStore()
