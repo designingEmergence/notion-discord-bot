@@ -32,10 +32,6 @@ class NotionBot(commands.Bot):
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-        if "OPENAI_API_KEY" in os.environ:
-            del os.environ["OPENAI_API_KEY"]
-            # load_dotenv(override=True)
-
         self.max_history = 3
         self.logger = logging.getLogger(__name__)
         intents = discord.Intents.default()
