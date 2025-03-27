@@ -2,7 +2,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-# from dotenv import load_dotenv
 from notion.client import NotionClient
 from notion.sync import sync_notion_content
 from rag.vectorstore import VectorStore
@@ -14,19 +13,17 @@ from typing import List, Dict, Any, Optional, Callable
 import logging
 import chromadb
 
-# load_dotenv()
-
 def admin_only():
     async def predicate(interaction: discord.Interaction) -> bool:
         admin_ids = [int(id) for id in os.getenv("ADMIN_IDS", "").split(",") if id]
-        return interaction.user.id in admin_ids
+        is_admin = interaction.user.id in admin_ids
+        if not is_admin:
+            await interaction.response.send_message("❌ You do not have permission to run this command.", ephemeral=True)
+        return is_admin
     return app_commands.check(predicate)
 
 class NotionBot(commands.Bot):
     def __init__(self):
-
-        # Load environment variables first
-        # load_dotenv()
         
         # Validate OpenAI API key is present
         if not os.getenv("OPENAI_API_KEY"):
@@ -80,10 +77,13 @@ class NotionBot(commands.Bot):
         self.logger.info("NotionBot initialization complete")
 
         # Register commands
+
+        #Sync command
         @self.tree.command(
             name="sync", 
             description="Sync Notion content to vector store"
         )
+        @admin_only()
         @app_commands.describe(
             resource_id="Optional: Notion resource ID to sync (defaults to configured ID)",
             collection_name="Optional: Collection name for vector store (defaults to 'notion_docs')"
@@ -95,10 +95,12 @@ class NotionBot(commands.Bot):
         ):
             await sync_notion(interaction, self, resource_id, collection_name)
         
+        #Set collection command
         @self.tree.command(
             name="set_collection",
             description="Set active collection for queries"
         )
+        @admin_only()
         @app_commands.describe(
             collection_name="Name of the collection to use for queries"
         )
@@ -108,12 +110,26 @@ class NotionBot(commands.Bot):
         ):
             if collection_name not in self.vector_stores:
                 await interaction.response.send_message(
-                    f"❌ Collection '{collection_name}' not found. Available collections: {', '.join(self.vector_stores.keys())}"
+                    f"❌ Collection '{collection_name}' not found. Available collections: {', '.join(self.vector_stores.keys())}", ephemeral=True
                 )
                 return
             self.vector_store = self.vector_stores[collection_name]
             self.retriever = Retriever(vector_store=self.vector_store)
             await interaction.response.send_message(f"✅ Active collection set to '{collection_name}'")
+
+        #Get current collection command
+        @self.tree.command(
+            name="get_collection",
+            description="Get active collection for queries"
+        )
+        @admin_only()
+        async def get_collection(
+            interaction: discord.Interaction
+        ):
+            await interaction.response.send_message(
+                 f"📚 Currently active collection: `{self.vector_store.collection_name}`\n"
+                f"Available collections: {', '.join(f'`{name}`' for name in self.vector_stores.keys())}"
+            )
 
     async def setup_hook(self):
         self.logger.info("syncing commands...")
@@ -122,6 +138,7 @@ class NotionBot(commands.Bot):
             self.logger.info("commands synced")
         except Exception as e:
             self.logger.error(f"Error syncing commands: {e}")
+            raise e
 
     async def get_conversation_history(self, channel, limit=5):
         """Get recent conversation history from Discord channel"""
@@ -285,14 +302,14 @@ async def sync_notion(
         except Exception as e:
             bot.logger.error(f"Error during sync: {str(e)}", exc_info=True)
             if "APIStatusError" in str(e):
-                await interaction.followup.send("❌ Error with OpenAI API. Please check your API key and permissions.")
+                await interaction.followup.send("❌ Error with OpenAI API. Please check your API key and permissions.", ephemeral=True)
             else:
-                await interaction.followup.send(f"❌ Error syncing content: {str(e)}")
+                await interaction.followup.send(f"❌ Error syncing content: {str(e)}", ephemeral=True)
 
     except ValueError as e:
-        await interaction.followup.send(f"❌ Invalid resource ID: {str(e)}")    
+        await interaction.followup.send(f"❌ Invalid resource ID: {str(e)}", ephemeral=True)    
     except RuntimeError as e:
-        await interaction.followup.send(f"❌ Error with embeddings: {str(e)}")
+        await interaction.followup.send(f"❌ Error with embeddings: {str(e)}", ephemeral=True)
     except Exception as e:
         bot.logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-        await interaction.followup.send(f"❌ Unexpected error: {str(e)}")
+        await interaction.followup.send(f"❌ Unexpected error: {str(e)}", ephemeral=True)
