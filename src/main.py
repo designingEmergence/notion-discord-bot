@@ -42,10 +42,7 @@ def validate_env():
         if not value:
             raise ValueError(f"Missing {var}")
 
-async def main():
-    # Load environment variables
-    # load_dotenv(verbose=True)  # Add verbose flag
-    
+async def main():    
     try:
         validate_env()
         token = os.getenv('DISCORD_TOKEN')
@@ -53,17 +50,20 @@ async def main():
         
         bot = NotionBot()
 
+        runner = web.AppRunner(app)
+        await runner.setup()
+
         # Start both the bot and web server
-        web_task = web.TCPSite(
-            runner=web.AppRunner(app),
+        site = web.TCPSite(
+            runner=runner,
             host='0.0.0.0',
             port=int(os.getenv("PORT", 8080))
-        ).start()
+        )
 
         logger.info("Starting Notion Discord Bot...")
         
         await asyncio.gather(
-            web_task,
+            site.start(),
             bot.start(token)
         )
         
