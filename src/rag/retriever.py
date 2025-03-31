@@ -1,19 +1,21 @@
 from typing import List, Dict, Any, Optional
 from .vectorstore import VectorStore
+from config import ConfigManager
 
 class Retriever:
-    #TODO put params in the config
     def __init__(
         self,
         vector_store: VectorStore,
-        max_tokens: int = 3000,
-        num_results: int = 5,
-        similarity_threshold: float = 0.7 
+        config_manager: ConfigManager
     ):
         self.vector_store = vector_store
-        self.max_tokens = max_tokens
-        self.num_results = num_results
-        self.similarity_threshold = similarity_threshold
+        self.config = config_manager
+    
+    async def initialize(self):
+        """Initialize configuration values"""
+        self.max_tokens = await self.config.get("max_tokens")  # This could also be configurable
+        self.num_results = await self.config.get("num_retrieved_results")    # This could also be configurable
+        self.similarity_threshold = await self.config.get("similarity_threshold")
 
     async def get_relevant_documents(
         self,

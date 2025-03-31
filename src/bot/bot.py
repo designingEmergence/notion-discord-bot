@@ -6,12 +6,14 @@ from notion.client import NotionClient
 from notion.sync import sync_notion_content
 from rag.vectorstore import VectorStore
 from rag.retriever import Retriever
+from config import ConfigManager
 from openai import AsyncOpenAI
 import numpy as np
 from functools import wraps
 from typing import List, Dict, Any, Optional, Callable
 import logging
 import chromadb
+
 
 def admin_only():
     async def predicate(interaction: discord.Interaction) -> bool:
@@ -29,54 +31,19 @@ class NotionBot(commands.Bot):
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY environment variable is not set")
 
-        self.max_history = 3
         self.logger = logging.getLogger(__name__)
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds= True
         super().__init__(command_prefix="!", intents=intents)
 
-        #Initialize components
-        self.logger.info("Initializing Notion Bot components...")
         self.notion_client = NotionClient(api_key=os.getenv("NOTION_TOKEN"))
         self.vector_stores = {}
         self.default_collection = os.getenv("COLLECTION_NAME", "notion_docs")
-
-        try:
-            chroma_client = chroma_client = chromadb.PersistentClient(
-                path="chroma_db",
-                settings=chromadb.Settings(
-                    allow_reset=True,
-                    is_persistent=True
-                )
-            )
-            collection_names = chroma_client.list_collections()
-            
-            for name in collection_names:
-                self.logger.info(f"Found existing collection: {name}")
-                self.vector_stores[name] = VectorStore(
-                    collection_name=name,
-                    chunk_size=2000
-                )
-            
-            # If default collection doesn't exist, create it
-            if self.default_collection not in self.vector_stores:
-                self.vector_stores[self.default_collection] = VectorStore(
-                    collection_name=self.default_collection,
-                    chunk_size=2000
-                )
-
-            self.vector_store = self.vector_stores[self.default_collection]
-            self.retriever = Retriever(vector_store=self.vector_store)
-            
-        except Exception as e:
-            self.logger.error(f"Error initializing vector stores: {e}")
-            raise e
-
         self.openai_client = AsyncOpenAI()
-        self.logger.info("NotionBot initialization complete")
+        self.config = ConfigManager()
 
-        # Register commands
+        #Register discord commands
 
         #Sync command
         @self.tree.command(
@@ -130,8 +97,124 @@ class NotionBot(commands.Bot):
                  f"📚 Currently active collection: `{self.vector_store.collection_name}`\n"
                 f"Available collections: {', '.join(f'`{name}`' for name in self.vector_stores.keys())}"
             )
+        
+        #Get configuration value(s)
+        @self.tree.command(
+            name="get_config",
+            description = "Get configuration value(s). Shows all configs if no key specified."
+        )
+        @admin_only()
+        @app_commands.describe(key="Configuration key name to get (optional)")
+        async def get_config(
+            interaction: discord.Interaction,
+            key: Optional[str] = None
+        ):
+            try:
+                if key:
+                    value = await self.config.get(key)
+                    await interaction.response.send_message(
+                        f"📝 Config `{key}` = `{value}`"
+                    )
+                else:
+                    # get all config values
+                    all_configs = await self.config.get_all()
+                    config_values = [f"`{k}` = `{v}`" for k, v in all_configs.items()]
+                    message = "📝 Current Configuration:\n" + "\n".join(config_values)
+                    await interaction.response.send_message(message)
+            except ValueError as e:
+                await interaction.response.send_message(
+                    f"❌ {str(e)}", ephemeral=True
+                )
+        
+        #Set configuration value
+        @self.tree.command(
+            name="set_config",
+            description= "Set a configuration value"
+        )
+        @admin_only()
+        @app_commands.describe(
+            key="Configuration key to set",
+            value="New value for the configuration"
+        )
+        async def set_config(
+            interaction: discord.Interaction,
+            key: str,
+            value: str
+        ):
+            try:
+                #Get default value to determine type
+                default_value = self.config.DEFAULT_CONFIG.get(key)
+                if default_value is None:
+                    raise ValueError(f"Invalid configuration key. Valid keys are: {', '.join(self.config.DEFAULT_CONFIG.keys())}")
+                
+                try:
+                    if isinstance(default_value, bool):
+                        converted_value = value.lower() == "true"
+                    elif isinstance(default_value, (int, float)):
+                        converted_value = type(default_value)(value)
+                    else:
+                        converted_value = value
+                except ValueError:
+                    raise ValueError(f"Invalid value type. Expected {type(default_value).__name__}, got '{value}'")
+                
+                await self.config.set(key, converted_value)
+                await interaction.response.send_message(
+                    f"✅ Successfully set `{key}` to `{converted_value}`"
+                )
+            
+            except ValueError as e:
+                await interaction.response.send_message(
+                     f"❌ {str(e)}", ephemeral=True
+                )
+            except Exception as e:
+                self.logger.error(f"Error setting config: {e}")
+                await interaction.response.send_message(
+                    "❌ An error occurred while setting the configuration",
+                    ephemeral=True
+                )
 
+            
     async def setup_hook(self):
+        """Async Initialization"""
+        self.logger.info("Initializing Notion Bot components...")
+
+        #Initialize config database
+        await self.config.init_db()
+
+        try:
+            chroma_client = chroma_client = chromadb.PersistentClient(
+                path="chroma_db",
+                settings=chromadb.Settings(
+                    allow_reset=True,
+                    is_persistent=True
+                )
+            )
+            collection_names = chroma_client.list_collections()
+            
+            for name in collection_names:
+                self.logger.info(f"Found existing collection: {name}")
+                chunk_size = await self.config.get("chunk_size")
+                self.vector_stores[name] = VectorStore(
+                    collection_name=name,
+                    chunk_size=chunk_size
+                )
+            
+            # If default collection doesn't exist, create it
+            if self.default_collection not in self.vector_stores:
+                chunk_size = await self.config.get("chunk_size")
+                self.vector_stores[self.default_collection] = VectorStore(
+                    collection_name=self.default_collection,
+                    chunk_size=chunk_size
+                )
+
+            self.vector_store = self.vector_stores[self.default_collection]
+            self.retriever = Retriever(vector_store=self.vector_store, config_manager=self.config)
+            await self.retriever.initialize()
+            
+        except Exception as e:
+            self.logger.error(f"Error initializing vector stores: {e}")
+            raise e
+
         self.logger.info("syncing commands...")
         try:
             await self.tree.sync()
@@ -139,9 +222,15 @@ class NotionBot(commands.Bot):
         except Exception as e:
             self.logger.error(f"Error syncing commands: {e}")
             raise e
+    
+        self.logger.info("NotionBot initialization complete")
 
-    async def get_conversation_history(self, channel, limit=5):
+
+    async def get_conversation_history(self, channel, limit=None):
         """Get recent conversation history from Discord channel"""
+        if limit is None:
+            limit = await self.config.get("message_history_limit")
+
         messages = []
         async for msg in channel.history(limit=limit):
             # Skip bot messages that don't have content
@@ -172,20 +261,23 @@ class NotionBot(commands.Bot):
                     query_embedding = all_embeddings[-1]
                     history_embeddings = all_embeddings[:-1]
 
-                similarities = [
-                    np.dot(query_embedding, hist_embed)
-                    for hist_embed in history_embeddings
-                ]
+                    similarities = [
+                        np.dot(query_embedding, hist_embed)
+                        for hist_embed in history_embeddings
+                    ]
 
-                # Filter relevant history based on similarity threshold
-                similarity_threshold = 0.7 #TODO make this configurable                
-                relevant_history = [
-                    msg for msg, sim in zip(conversation_history, similarities)
-                    if sim > similarity_threshold
-                ]
-                conversation.extend(relevant_history[-self.max_history:])
+                    # Filter relevant history based on similarity threshold
+                    similarity_threshold = await self.config.get("similarity_threshold")
+                    max_history = await self.config.get("max_history")
+
+                    relevant_history = [
+                        msg for msg, sim in zip(conversation_history, similarities)
+                        if sim > similarity_threshold
+                    ]
+                    conversation.extend(relevant_history[-max_history:])
             else: 
-                conversation.extend(conversation_history[-self.max_history:])
+                max_history = await self.config.get("max_history")
+                conversation.extend(conversation_history[-max_history:])
        
         
             # Get relevant documents for both history and current query
@@ -195,7 +287,7 @@ class NotionBot(commands.Bot):
             )
 
             # Truncate context if too long (approximately 4000 tokens)
-            max_context_chars = 12000  # Approximate character limit
+            max_context_chars = await self.config.get("max_content_chars")
             if len(relevant_docs) > max_context_chars:
                 self.logger.warning(f"Truncating context from {len(relevant_docs)} to {max_context_chars} characters")
                 relevant_docs = relevant_docs[:max_context_chars] + "..."
@@ -227,24 +319,26 @@ class NotionBot(commands.Bot):
                 async with message.channel.typing():
                     try:
                         # Get recent conversation history
-                        conversation = await self.get_conversation_history(channel=message.channel, limit=3) #TODO configurable message history
+                        message_history_limit = await self.config.get("message_history_limit")
+                        conversation = await self.get_conversation_history(channel=message.channel, limit=message_history_limit) 
 
                         # Get context and generate response using existing logic
                         context = await self.get_conversation_context(
                             query=question,
                             conversation_history=conversation
                         )
-
+                        system_prompt = await self.config.get("system_prompt")
                         messages = [
-                            {"role": "system", "content": "You are a helpful assistant answering questions based on the provided context."},
+                            {"role": "system", "content": f"Role: {system_prompt}"},
                             {"role": "system", "content": f"Context: {context}"},
                             *conversation, 
                             {"role": "user", "content": question}
                         ]
 
                         #TODO move below options to a config file/writeable db and create discord command to update this config
+                        llm_model = await self.config.get("llm_model")
                         response = await self.openai_client.chat.completions.create(
-                            model="gpt-4",
+                            model=llm_model,
                             messages=messages
                         )
 
@@ -253,7 +347,8 @@ class NotionBot(commands.Bot):
                         await message.reply(f"❌ Error: {str(e)}")
             
             else:
-                await message.reply(("Hello! Ask me anything about your Notion content!")) #TODO make configurable
+                welcome_message = await self.config.get("welcome_message")
+                await message.reply(welcome_message) 
 
 
 
