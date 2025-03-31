@@ -173,7 +173,41 @@ class NotionBot(commands.Bot):
                     ephemeral=True
                 )
 
-            
+        #Reset Configuration
+        @self.tree.command(
+            name="reset_config",
+            description="Reset configuration to default value. Optionally specify a key to reset only that setting.",
+        )
+        @admin_only()
+        @app_commands.describe(
+            key="Optional: Configuration key to reset. If not provided, resets all settings."
+        )
+        async def reset_config(
+            interaction: discord.Interaction,
+            key: Optional[str] = None
+        ):
+            try:
+                await self.config.reset(key)
+                if key:
+                    new_value = self.config.get(key)
+                    await interaction.response.send_message(
+                        f"✅ Reset `{key}` to default value: `{new_value}`"
+                    )
+                else:
+                    await interaction.response.send_message(   
+                        "✅ All configuration values have been reset to defaults"
+                    )
+            except ValueError as e:
+                await interaction.response.send_message(
+                    f"❌ {str(e)}", ephemeral=True
+                )
+            except Exception as e:
+                self.logger.error(f"Error resetting config: {e}")
+                await interaction.response.send_message(
+                    "❌ An error occurred while resetting the configuration",
+                    ephemeral=True
+                )
+                    
     async def setup_hook(self):
         """Async Initialization"""
         self.logger.info("Initializing Notion Bot components...")

@@ -48,7 +48,7 @@ class ConfigManager:
             raise
     
     async def get(self, key:str) -> Any:
-        """Get configuration value"""
+        """Get configuration value and convert to appropriate type"""
         try:
             conn = await asyncpg.connect(self.db_url)
             row = await conn.fetchrow(
@@ -57,11 +57,23 @@ class ConfigManager:
             )
             await conn.close()
 
-            if row:
-                return row['value']
-            return self.DEFAULT_CONFIG.get(key)
+            value = row['value'] if row else self.DEFAULT_CONFIG.get(key)
+
+            if value is None:
+                raise ValueError(f"Configuration key '{key}' not found")
+            
+            default_value = self.DEFAULT_CONFIG.get(key)
+            if default_value is not None:
+                if isinstance(default_value, bool):
+                    return str(value).lower() == 'true'
+                elif isinstance(default_value, (int, float)):
+                    return type(default_value)(value)
+                
+            return value
+
         except Exception as e:
             self.logger.error(f"Error getting config: {e}")
+            # Return default value if there's an error
             return self.DEFAULT_CONFIG.get(key)
     
     async def get_all(self) -> Dict[str, Any]:
