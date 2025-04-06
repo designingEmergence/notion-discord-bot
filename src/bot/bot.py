@@ -109,10 +109,11 @@ class NotionBot(commands.Bot):
             interaction: discord.Interaction,
             key: Optional[str] = None
         ):
+            await interaction.response.defer()
             try:
                 if key:
                     value = await self.config.get(key)
-                    await interaction.response.send_message(
+                    await interaction.followup.send(
                         f"📝 Config `{key}` = `{value}`"
                     )
                 else:
@@ -120,9 +121,9 @@ class NotionBot(commands.Bot):
                     all_configs = await self.config.get_all()
                     config_values = [f"`{k}` = `{v}`" for k, v in all_configs.items()]
                     message = "📝 Current Configuration:\n" + "\n".join(config_values)
-                    await interaction.response.send_message(message)
+                    await interaction.followup.send(message)
             except ValueError as e:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"❌ {str(e)}", ephemeral=True
                 )
         
@@ -141,6 +142,7 @@ class NotionBot(commands.Bot):
             key: str,
             value: str
         ):
+            await interaction.response.defer()
             try:
                 #Get default value to determine type
                 default_value = self.config.DEFAULT_CONFIG.get(key)
@@ -158,17 +160,17 @@ class NotionBot(commands.Bot):
                     raise ValueError(f"Invalid value type. Expected {type(default_value).__name__}, got '{value}'")
                 
                 await self.config.set(key, converted_value)
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     f"✅ Successfully set `{key}` to `{converted_value}`"
                 )
             
             except ValueError as e:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                      f"❌ {str(e)}", ephemeral=True
                 )
             except Exception as e:
                 self.logger.error(f"Error setting config: {e}")
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "❌ An error occurred while setting the configuration",
                     ephemeral=True
                 )
@@ -384,9 +386,6 @@ class NotionBot(commands.Bot):
                 welcome_message = await self.config.get("welcome_message")
                 await message.reply(welcome_message) 
 
-
-
-# Move sync command outside of Bot Class
 
 async def sync_notion(
     interaction: discord.Interaction, 
