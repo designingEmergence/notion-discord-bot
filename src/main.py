@@ -5,6 +5,7 @@ import sys
 # from dotenv import load_dotenv
 from bot.bot import NotionBot
 from aiohttp import web
+import argparse
 
 app = web.Application()
 routes = web.RouteTableDef()
@@ -42,13 +43,20 @@ def validate_env():
         if not value:
             raise ValueError(f"Missing {var}")
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Notion Discord Bot')
+    parser.add_argument('--use-public-db', action='store_true',
+                        help= 'Use public railway database URL instead of private URL')
+    return parser.parse_args()
+
 async def main():    
     try:
+        args = parse_args()
         validate_env()
         token = os.getenv('DISCORD_TOKEN')
         logger.debug(f"Token loaded: {token}")  # Debug log token
         
-        bot = NotionBot()
+        bot = NotionBot(use_public_db=args.use_public_db)
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -61,7 +69,7 @@ async def main():
         )
 
         logger.info("Starting Notion Discord Bot...")
-        
+
         await asyncio.gather(
             site.start(),
             bot.start(token)

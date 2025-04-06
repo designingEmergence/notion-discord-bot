@@ -20,11 +20,19 @@ class ConfigManager:
         "embedding_model": "text-embedding-3-small"
     }
 
-    def __init__(self):
+    def __init__(self, use_public_db: bool = False):
         self.logger = logging.getLogger(__name__)
-        self.db_url = os.getenv("DATABASE_URL")
-        if not self.db_url:
-            raise ValueError("DATABASE_URL environment variable not set")
+
+        if use_public_db:
+            self.db_url = os.getenv("DATABASE_PUBLIC_URL")
+            if not self.db_url:
+                raise ValueError("DATABASE_PUBLIC_URL environment variable not set")
+        else:
+            self.db_url = os.getenv("DATABASE_URL")
+            if not self.db_url:
+                raise ValueError("DATABASE_URL environment variable not set")
+            
+        self.logger.debug(f"Using {'public' if use_public_db else 'private'} database")
         self.logger.debug(f"Database URL format check: postgresql://user:***@host:port/dbname")
         parsed_url = urllib.parse.urlparse(self.db_url)
         self.logger.debug(f"URL: {self.db_url}")
