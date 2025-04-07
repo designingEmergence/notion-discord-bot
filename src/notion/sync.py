@@ -2,10 +2,11 @@ from typing import Optional, Dict, List
 import logging
 from notion.client import NotionClient
 from rag.vectorstore import VectorStore
+from notion.utils import get_page_title
 
 
 logger = logging.getLogger(__name__)
-  
+
 
 async def sync_notion_content(
     notion_client: NotionClient,
@@ -21,7 +22,7 @@ async def sync_notion_content(
         raise ValueError("Resource ID is required for syncing Notion content")
     
     try:
-        resource_type = await notion_client.detect_resource_type(resource_id)
+        resource_type = await notion_client.detect_resource_type(resource_id) #TODO move this to utils
         if resource_type not in ["database", "page"]:
             raise ValueError(f"Invalid resource type: {resource_type}")
 
@@ -31,15 +32,38 @@ async def sync_notion_content(
             except Exception as e:
                 logger.error(f"Error in progress callback: {str(e)}")
         
-        # Get all pages from Notion
-        pages = await notion_client.get_resource_pages(resource_id)        
+        # Get all pages ids from Notion
+        logger.info(f"Fetching pages for resource {resource_id} (type: {resource_type})")
+        pages = await notion_client.get_resource_pages(resource_id)
+        logger.debug(f"page structure returned for get_resource_pages: {pages[0]}")  
+
+        if progress_callback:
+            logger.debug(f"Total pages found:  {len(pages)}")
+            resource_name = "Untitled"
+            if pages:
+                first_page = pages[0]
+                resource_name = get_page_title(first_page)
+
+            await progress_callback(
+                f"🔑 Notion Resource Type: {resource_type.capitalize()}\n" +
+                (f"📚 Pages in Database: {len(pages)}\n" if resource_type == "database" else "") +
+                f"🪪 Resource Name: {resource_name}\n" +
+                "🔄 Syncing..."
+            ) 
+
+        page_info = [
+            {
+                'id': page.get('id'),
+                'title': get_page_title(page),
+                'parent': page.get('parent', {})
+            }
+            for page in pages
+        ]     
+        logger.debug(f"Retrieved pages structure: {page_info}")
 
         if test_mode:
             pages = pages[:max_pages]
             logger.info(f"Test mode enabled, syncing {len(pages)} pages...")
-
-        if progress_callback:
-            await progress_callback(f"📥 Found {len(pages)} pages...")
         
         # Extract text content from pages
         texts = []
@@ -63,8 +87,8 @@ async def sync_notion_content(
                     continue
                 
                 # Log a preview of the content for debugging
-                content_preview = content[:50] + "..." if len(content) > 50 else content
-                logger.debug(f"Content preview for page {page['id']}: {content_preview}")           
+                #content_preview = content[:50] + "..." if len(content) > 50 else content
+                #logger.debug(f"Content preview for page {page['id']}: {content_preview}")           
                 
                 page_id = page.get("id")
                 if not page_id:
@@ -136,14 +160,14 @@ Content:
                 
                 # Debug log the final combined content length
                 logger.debug(f"Combined content length: {len(combined_content)}")
-                logger.debug(f"Combined content preview: {combined_content[:200]}...")
+                #logger.debug(f"Combined content preview: {combined_content[:200]}...")
                 
                 texts.append(combined_content)
                 ids.append(f"notion_{page['id']}")
                 metadatas.append(metadata)
 
                 if progress_callback and i % 10 == 0:
-                    await progress_callback(f"📑 Processed {i}/{len(pages)} pages...")  
+                    await progress_callback(f"📑 Processed {i}/{len(pages)} pages...")
 
             except Exception as e:
                 error_msg = str(e)
@@ -181,14 +205,14 @@ Content:
     
         # Debug log before syncing
         logger.debug(f"Final lengths - texts: {len(final_texts)}, ids: {len(final_ids)}, metadatas: {len(final_metadatas)}")
-        logger.debug(f"Sample document content: {texts[0][:100] if texts and len(texts) > 0 else 'No documents'}")
+        #logger.debug(f"Sample document content: {texts[0][:100] if texts and len(texts) > 0 else 'No documents'}")
 
         if final_texts:
             logger.debug(f"First document type: {type(final_texts[0])}")
-            logger.debug(f"First document preview: {final_texts[0][:100]}")
+            #logger.debug(f"First document preview: {final_texts[0][:100]}")
         else:
             logger.error("No valid documents found to sync")
-            return {"added": 0, "updated": 0, "deleted": 0, "total": 0}
+            return {"added": 0, "updated": 0, "deleted": 0, "total": 0}  
 
         # Sync documents
         sync_results = await vector_store.sync_documents(

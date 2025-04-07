@@ -393,7 +393,7 @@ async def sync_notion(
     resource_id: Optional[str]= None,
     collection_name: Optional[str] = None):
     """Sync Notion content to vector store (Admin only)"""
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
 
     try:
         if not resource_id:
@@ -406,7 +406,7 @@ async def sync_notion(
         vector_store = bot.vector_stores[collection_name]
 
         async def progress_callback(msg: str):
-            await interaction.followup.send(msg)
+            await interaction.followup.send(msg, ephemeral=True)
         try:
             sync_results = await sync_notion_content(
                 notion_client=bot.notion_client,

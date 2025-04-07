@@ -51,6 +51,8 @@ class NotionClient:
             "quote": parsers._handle_quote,
             "divider": lambda block: "----",
             "callout": parsers._handle_callout,
+            "child_page": parsers._handle_child_page,
+            "child_database": parsers._handle_child_database
         }
 
     def headers(self):
@@ -88,7 +90,6 @@ class NotionClient:
         url = f"{self.base_url}/databases/{database_id}"
         return await self._make_requests("GET", url)
     
-
     async def detect_resource_type(self, resource_id: str) -> str:
         """Detect the type of Notion resource (page, database, etc.)"""
 
@@ -117,15 +118,51 @@ class NotionClient:
 
         return await self._make_requests("POST", url, json=body)
     
-    async def get_block_children(self, block_id: str) -> List[Dict[str, Any]]:
-        """Retrieve all child blocks of a given block."""
-        url = f"{self.base_url}/blocks/{block_id}/children"
-        return await self._make_requests("GET", url)
+    async def get_resource_pages(self, resource_id: str) -> List[Dict]:
+        """Get all page ids from a database or a single page."""
+        try:
+            resource_type = await self.detect_resource_type(resource_id)
+            self.logger.info(f"Detected resource type: {resource_type}")
+            if resource_type == "database":
+                return await self.get_all_pages(resource_id)
+            else:
+                return await self.get_page(resource_id)
+        except Exception as e:
+            self.logger.error(f"Error getting pages from resource {resource_id}: {str(e)}")
+            raise
+    
+    async def get_all_pages(self, database_id: str) -> List[Dict[str, Any]]:
+        """Get all page ids from a database with pagination handling."""
+        all_pages = []
+        has_more = True
+        next_cursor = None
+
+        while has_more:
+            response = await self.query_database(database_id, start_cursor=next_cursor)
+            all_pages.extend(response["results"])
+            has_more = response["has_more"]
+            next_cursor = response.get("next_cursor")
+
+        return all_pages
+    
+    async def get_page(self, page_id: str) -> List[Dict]:
+        """Get the page details."""
+        try:
+            page = await self.retrieve_page(page_id)
+            return [page]
+        except Exception as e:
+            self.logger.warning(f"Error retrieving page {page_id}: {str(e)}")
+            raise
     
     async def get_page_content(self, page_id: str) -> str:
         """Extract all text content from a page"""
         blocks = await self.get_block_children(page_id)
         return await self._process_blocks(blocks["results"])
+    
+    async def get_block_children(self, block_id: str) -> List[Dict[str, Any]]:
+        """Retrieve all child blocks of a given block."""
+        url = f"{self.base_url}/blocks/{block_id}/children"
+        return await self._make_requests("GET", url)
     
     async def _process_blocks(self, blocks: List[Dict]) -> str:
         """Process blocks and extract text content."""
@@ -136,14 +173,18 @@ class NotionClient:
                 handler = self._block_handlers.get(block_type)
                 if handler:
                     try:
-                        if processed_text := handler(block):
-                            content.append(processed_text)
+                        if block_type == "child_page": #TODO handle database
+                            if processed_text := await handler(block, self):
+                                content.append(processed_text)
+                        else:
+                            if processed_text := handler(block):
+                                content.append(processed_text)
                         self.logger.debug(f"Processed block type: {block_type}")
                     except Exception as e:
                         self.logger.warning(f"Error processing block type {block_type}: {str(e)}. Skipping block.")
                         continue
                 else:
-                    self.logger.debug(f"Unhandled block type: {block_type}")
+                    self.logger.debug(f"Unhandled block type: {block_type}. Any child blocks will still be processed")
 
                 # Recursively process child blocks if they exist
                 if block.get("has_children"):
@@ -161,67 +202,5 @@ class NotionClient:
                 continue
         return "\n".join(content)
 
-    async def get_resource_pages(self, resource_id: str) -> List[Dict]:
-        """Get all pages from a database or a single page."""
-        try:
-            resource_type = await self.detect_resource_type(resource_id)
-            self.logger.info(f"Detected resource type: {resource_type}")
-            if resource_type == "database":
-                return await self.get_all_pages(resource_id)
-            else:
-                return await self.get_page_and_subpages(resource_id)
-        except Exception as e:
-            self.logger.error(f"Error getting pages from resource {resource_id}: {str(e)}")
-            raise
-
-    async def get_all_pages(self, database_id: str) -> List[Dict[str, Any]]:
-        """Get all pages from a database with pagination handling."""
-        all_pages = []
-        has_more = True
-        next_cursor = None
-
-        while has_more:
-            response = await self.query_database(database_id, start_cursor=next_cursor)
-            all_pages.extend(response["results"])
-            has_more = response["has_more"]
-            next_cursor = response.get("next_cursor")
-
-        return all_pages
-    
-    async def get_page_and_subpages(self, page_id: str) -> List[Dict]:
-        """Recursively get a page and all its subpages."""
-        pages = []
-        visited = set()
-
-    
-        async def recursive_get_page(current_page_id: str):
-            if current_page_id in visited:
-                return
-            visited.add(current_page_id)
-
-            try:
-                page = await self.retrieve_page(current_page_id)
-                pages.append(page)
-
-                blocks = await self.get_block_children(current_page_id)
-                
-                for block in blocks.get("results", []):
-                    block_type = block.get("type")
-                    self.logger.debug(f"Processing block type: {block_type}")
-
-                    if block_type == "child_page":
-                        child_page_id = block.get("id")
-                        await recursive_get_page(child_page_id)
-                    
-                    elif block_type == "child_database":
-                        database_id = block.get("id")
-                        database_pages = await self.get_all_pages(database_id)
-                        pages.extend(database_pages)
-            
-            except Exception as e:
-                self.logger.warning(f"Error processing page {current_page_id}: {str(e)}")
-
-        await recursive_get_page(page_id)
-        return pages
 
                     

@@ -16,6 +16,15 @@ async def hello(request):
 
 app.add_routes(routes)
 
+class LogFilter(logging.Filter):
+    def filter(self, record):
+        return not (
+            'WebSocket' in record.msg or 
+            'discord.gateway' in record.name or
+            'Keeping gateway' in record.msg or
+            'Shard ID' in record.msg
+        )
+
 # Configure logging
 logging.basicConfig(
     level=logging.DEBUG,  # Change to DEBUG
@@ -25,7 +34,12 @@ logging.basicConfig(
         logging.FileHandler('bot.log')
     ]
 )
+# Set higher log levels for HTTP libraries to suppress connection logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
+logger.addFilter(LogFilter())
 
 def validate_env():
     """Validate required environment variables"""
