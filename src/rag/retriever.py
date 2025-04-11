@@ -38,12 +38,21 @@ class Retriever:
     def format_context(self, documents: List[Dict[str, Any]]) -> str:
         """Format retrieved documents into context string"""
         contexts = []
+        # Track seen titles to avoid duplicates
+        seen_titles = set()
+        
         for doc, metadata in zip(
             documents.get("documents", [[]])[0],
             documents.get("metadatas", [[]])[0]
         ):
             title = metadata.get("title", "Untitled")
             url = metadata.get("url", "")
+            
+            # Skip duplicates with the same title
+            if title in seen_titles:
+                continue
+            
+            seen_titles.add(title)
             contexts.append(f"Title: {title}\nURL: {url}\nContent: {doc}")
 
         return "\n\n---\n\n".join(contexts)

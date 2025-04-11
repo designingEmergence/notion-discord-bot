@@ -34,6 +34,10 @@ logging.basicConfig(
         logging.FileHandler('bot.log')
     ]
 )
+# Add filter to discord logger specifically
+discord_logger = logging.getLogger("discord")
+discord_logger.addFilter(LogFilter())
+
 # Set higher log levels for HTTP libraries to suppress connection logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)

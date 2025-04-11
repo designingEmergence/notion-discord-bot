@@ -209,6 +209,59 @@ class NotionBot(commands.Bot):
                     "❌ An error occurred while resetting the configuration",
                     ephemeral=True
                 )
+        
+        #Reset collection
+        @self.tree.command(
+            name="clear_collection",
+            description="Clear all documents from a vector store collection"
+        )
+        @admin_only()
+        @app_commands.describe(
+            collection_name="Name of the collection to clear (defaults to active collection)",
+            confirm="Type 'confirm' to proceed with clearing the collection"
+        )
+
+        async def clear_collection(
+            interaction: discord.Interaction,
+            collection_name: Optional[str] = None,
+            confirm: str = None
+        ):
+            await interaction.response.defer(ephemeral=True)
+            try:
+                # Validate confirmation
+                if not confirm or confirm.lower() != "confirm":
+                    await interaction.followup.send(
+                        "⚠️ You must type 'confirm' to proceed with clearing the collection.",
+                        ephemeral=True
+                    )
+                    return
+                
+                # Use current collection if none specified
+                target_collection = collection_name or self.vector_store.collection_name
+
+                #Check if collection exists
+                if target_collection not in self.vector_stores:
+                    await interaction.followup.send(
+                        f"❌ Collection '{target_collection}' not found. Available collections: {', '.join(self.vector_stores.keys())}",
+                        ephemeral=True
+                    )
+                    return
+
+                #Clear the collection
+                vector_store = self.vector_stores[target_collection]
+                await vector_store.clear_collection()
+
+                await interaction.followup.send(
+                    f"✅ Successfully cleared all documents from collection '{target_collection}'",
+                    ephemeral=True
+                )
+
+            except Exception as e:
+                self.logger.error(f"Error clearing collection: {str(e)}", exc_info=True)
+                await interaction.followup.send(
+                    f"❌ Error clearing collection: {str(e)}",
+                    ephemeral=True
+                )
                     
     async def setup_hook(self):
         """Async Initialization"""
@@ -417,12 +470,23 @@ async def sync_notion(
 
             # Show detailed results
             collection_info = f" to collection '{vector_store.collection_name}'" if collection_name else ""
+
+            # Fix grammar for singular/plural counts
+            added_text = f"{sync_results['added']} page" + ("s" if sync_results['added'] != 1 else "")
+            updated_text = f"{sync_results['updated']} page" + ("s" if sync_results['updated'] != 1 else "")
+            deleted_text = f"{sync_results['deleted']} page" + ("s" if sync_results['deleted'] != 1 else "")
+
+            # Calculate total as the sum of documents processed
+            total_processed = sync_results['added'] + sync_results['updated']
+            total_text = f"{total_processed} page" + ("s" if total_processed != 1 else "")
+
+
             result_message = (
                 f"✅ Sync completed{collection_info}!\n"
-                f"📝 Added: {sync_results['added']} pages\n"
-                f"🔄 Updated: {sync_results['updated']} pages\n"
-                f"🗑️ Deleted: {sync_results['deleted']} pages\n"
-                f"📚 Total pages: {sync_results['total']}"
+                f"📝 Added: {added_text}\n"
+                f"🔄 Updated: {updated_text}\n"
+                f"🗑️ Deleted: {deleted_text}\n"
+                f"📚 Total pages: {total_text}"
             )
             
             await interaction.followup.send(content=result_message)

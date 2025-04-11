@@ -2,7 +2,7 @@ from typing import Optional, Dict, List
 import logging
 from notion.client import NotionClient
 from rag.vectorstore import VectorStore
-from notion.utils import get_page_title
+from notion.utils import get_page_title, extract_page_metadata
 
 
 logger = logging.getLogger(__name__)
@@ -17,214 +17,189 @@ async def sync_notion_content(
     max_pages: int = 2
 ) -> Dict[str, int]:
     """Sync Notion database content to vector store"""
-
-    if not resource_id:
-        raise ValueError("Resource ID is required for syncing Notion content")
     
     try:
-        resource_type = await notion_client.detect_resource_type(resource_id) #TODO move this to utils
-        if resource_type not in ["database", "page"]:
-            raise ValueError(f"Invalid resource type: {resource_type}")
+        resource_type, pages = await _get_notion_page_ids(notion_client, resource_id, progress_callback)
 
-        if progress_callback:
-            try:
-                await progress_callback(f"🔄 Starting sync from {resource_id}...")
-            except Exception as e:
-                logger.error(f"Error in progress callback: {str(e)}")
-        
-        # Get all pages ids from Notion
-        logger.info(f"Fetching pages for resource {resource_id} (type: {resource_type})")
-        pages = await notion_client.get_resource_pages(resource_id)
-        logger.debug(f"page structure returned for get_resource_pages: {pages[0]}")  
-
-        if progress_callback:
-            logger.debug(f"Total pages found:  {len(pages)}")
-            resource_name = "Untitled"
-            if pages:
-                first_page = pages[0]
-                resource_name = get_page_title(first_page)
-
-            await progress_callback(
-                f"🔑 Notion Resource Type: {resource_type.capitalize()}\n" +
-                (f"📚 Pages in Database: {len(pages)}\n" if resource_type == "database" else "") +
-                f"🪪 Resource Name: {resource_name}\n" +
-                "🔄 Syncing..."
-            ) 
-
-        page_info = [
-            {
-                'id': page.get('id'),
-                'title': get_page_title(page),
-                'parent': page.get('parent', {})
-            }
-            for page in pages
-        ]     
-        logger.debug(f"Retrieved pages structure: {page_info}")
+        await _update_initial_progress(progress_callback, pages, resource_type)
 
         if test_mode:
             pages = pages[:max_pages]
-            logger.info(f"Test mode enabled, syncing {len(pages)} pages...")
+            logger.info(f"Test mode enabled, max pages = {max_pages}")
         
-        # Extract text content from pages
-        texts = []
-        metadatas = []
-        ids = []
+        logger.info(f"Processing {len(pages)} pages for sync to vector store...")
+
+        all_texts = []
+        all_metadatas = []
+        all_ids = []
+        
+        # Track document IDs to avoid duplicates within the same sync batch
+        seen_doc_ids = set()
 
         for i, page in enumerate(pages, 1):
             try:
-                content = await notion_client.get_page_content(page["id"])
+                logger.info(f"Processing page {page['id']}...")
 
-                if isinstance(content, tuple):
-                    content = "\n\n".join(str(item) for item in content if item)
-                elif not isinstance(content, str):
-                    logger.warning(f"Content for page {page['id']} is not a string, converting...")
-                    content = str(content) if content is not None else ""
+                texts, ids, metadatas = await _process_page_content(notion_client, page, resource_id)
 
-                content = content.strip()
-
-                if not content:
-                    logger.warning(f"Empty content for page {page['id']}, skipping...")
-                    continue
+                # Filter out duplicates within this sync batch
+                filtered_texts = []
+                filtered_ids = []
+                filtered_metadatas = []
                 
-                # Log a preview of the content for debugging
-                #content_preview = content[:50] + "..." if len(content) > 50 else content
-                #logger.debug(f"Content preview for page {page['id']}: {content_preview}")           
+                for text, doc_id, metadata in zip(texts, ids, metadatas):
+                    if doc_id in seen_doc_ids:
+                        logger.warning(f"Skipping duplicate document ID: {doc_id}")
+                        continue
+                    
+                    seen_doc_ids.add(doc_id)
+                    filtered_texts.append(text)
+                    filtered_ids.append(doc_id)
+                    filtered_metadatas.append(metadata)
                 
-                page_id = page.get("id")
-                if not page_id:
-                    logger.warning(f"Page ID not found for page {page}, skipping...")
-                    continue
-                
-                last_modified = page.get("last_edited_time", "")
-
-                title = ""
-                try:
-                    title_property = page.get("properties", {}).get("Name", {})
-                    if title_property and title_property.get("type") == "title":
-                        title_array = title_property.get("title", [])
-                        if title_array:
-                            title = title_array[0].get("text", {}).get("content", "")
-
-                    if not title:
-                        if page.get("parent", {}).get("type") == "page_id":
-                            title = page.get("properties", {}).get("title", {}).get("title", [{}])[0].get("plain_text", "")
-                        else:
-                            title = (
-                                page.get("properties", {}).get("title", {}).get("title", [{}])[0].get("plain_text", "") or
-                                page.get("properties", {}).get("Title", {}).get("title", [{}])[0].get("plain_text", "") or
-                                page.get("icon", {}).get("emoji", "") + " " + page.get("properties", {}).get("title", {}).get("title", [{}])[0].get("plain_text", "")
-                            ).strip()
-
-                    if not title:
-                        logger.warning(f"Could not extract title for page {page['id']}")
-
-                except Exception as e:
-                    logger.error(f"Error extracting title from page: {str(e)}")
-                    title = f"Untitled Page ({page['id']})"
-                
-                tags = []
-                try:
-                    tag_property = page.get("properties", {}).get("Tags", {})
-                    if tag_property and tag_property.get("type") == "multi_select":
-                        tags = [tag["name"] for tag in tag_property.get("multi_select", [])]
-                except Exception as e:
-                    logger.error(f"Error extracting tags from page: {str(e)}")
-
-                metadata = {
-                    "page_id": page["id"],
-                    "title": title,
-                    "last_modified": last_modified,
-                    "url": page.get("url", ""),
-                    "tags": ", ".join(tags) if tags else "",
-                    "public_url": page.get("public_url", ""),
-                    "created_time": page.get("created_time", ""),
-                }
-
-                properties = page.get("properties", {})
-                if isinstance(properties, dict):
-                    #Extract Link
-                    link_prop = properties.get("Link", {})
-                    if link_prop and isinstance(link_prop, dict):
-                        metadata["link"] = link_prop.get("url")
-                
-                    rating_prop = properties.get("Star Rating", {})
-                    if rating_prop and isinstance(rating_prop, dict):
-                        select_prop = rating_prop.get("select")
-                        if select_prop and isinstance(select_prop, dict):
-                            metadata["rating"] = select_prop.get("name")
-                
-                combined_content = f"""Title: {title}
-Tags: {' '.join(tags) if tags else 'None'}
-Content: 
-{content}"""
-                
-                # Debug log the final combined content length
-                logger.debug(f"Combined content length: {len(combined_content)}")
-                #logger.debug(f"Combined content preview: {combined_content[:200]}...")
-                
-                texts.append(combined_content)
-                ids.append(f"notion_{page['id']}")
-                metadatas.append(metadata)
+                all_texts.extend(filtered_texts)
+                all_metadatas.extend(filtered_metadatas)
+                all_ids.extend(filtered_ids)      
 
                 if progress_callback and i % 10 == 0:
                     await progress_callback(f"📑 Processed {i}/{len(pages)} pages...")
 
             except Exception as e:
-                error_msg = str(e)
-                preview_length = 50 
-                if len(error_msg) > preview_length:
-                    error_msg = f"{error_msg[:preview_length]}..."
-                logger.error(f"Error processing page {page['id']}: {error_msg}")
+                logger.error(f"Error processing page {page['id']}: {str(e)[:50]}...")
                 continue
 
-        if not texts:
+        if not all_texts:
             logger.error("No valid documents found to sync")
             return {"added": 0, "updated": 0, "deleted": 0, "total": 0}
-        
-        if isinstance(ids, tuple):
-            ids = list(ids)
-        
-        if isinstance(metadatas, tuple):
-            metadatas = list(metadatas)
-
-        logger.debug(f"Initial lengths - texts: {len(texts)}, ids: {len(ids)}, metadatas: {len(metadatas)}")
-        
-        final_texts = []
-        final_ids = []
-        final_metadatas = []
-
-        for text, id, metadata in zip(texts, ids, metadatas):
-            if isinstance(text, (str, bytes)):
-                text = text.strip()
-                if text:
-                    final_texts.append(str(text).strip())
-                    final_ids.append(id)
-                    final_metadatas.append(metadata)
-            else:
-                logger.warning(f"Skipping invalid content type {type(text)} for ID {id}")
-    
-        # Debug log before syncing
-        logger.debug(f"Final lengths - texts: {len(final_texts)}, ids: {len(final_ids)}, metadatas: {len(final_metadatas)}")
-        #logger.debug(f"Sample document content: {texts[0][:100] if texts and len(texts) > 0 else 'No documents'}")
-
-        if final_texts:
-            logger.debug(f"First document type: {type(final_texts[0])}")
-            #logger.debug(f"First document preview: {final_texts[0][:100]}")
-        else:
-            logger.error("No valid documents found to sync")
-            return {"added": 0, "updated": 0, "deleted": 0, "total": 0}  
 
         # Sync documents
-        sync_results = await vector_store.sync_documents(
-            ids=final_ids,
-            texts=final_texts,
-            metadatas=final_metadatas
-        )
+        logger.debug(f"Total docs to sync to vector store: {len(all_ids)}")
 
-        sync_results["total"] = len(pages)
+        sync_results = await vector_store.sync_documents(
+            ids=all_ids,
+            texts=all_texts,
+            metadatas=all_metadatas
+        )
         return sync_results
     
     except Exception as e:
-        error_preview = str(e)[:100] + "..." if len(str(e)) > 100 else str(e)
-        logger.error(f"Error syncing Notion content: {error_preview}")
+        logger.error(f"Error syncing Notion content: {str(e)[:100]}...")
         raise
+
+async def _get_notion_page_ids(
+        notion_client: NotionClient,
+        resource_id: str,
+        progress_callback: Optional[callable]
+) -> tuple[str, List]:
+    """Validate resources and return page ids from Notion resource"""
+
+    if not resource_id:
+        raise ValueError("Resource ID is required for syncing Notion content")
+    
+    resource_type = await notion_client.detect_resource_type(resource_id)
+    if resource_type not in ["database", "page"]:
+        raise ValueError(f"Invalid resource type: {resource_type}")
+    
+    if progress_callback:
+        await progress_callback(f"🔄 Starting sync from {resource_id}...") #TODO change to name?
+
+    pages = await notion_client.get_resource_pages(resource_id)
+    
+    return resource_type, pages
+
+async def _update_initial_progress(
+        progress_callback: callable,
+        pages: List,
+        resource_type: str
+) -> None:
+    """Update progress with initial sync information"""
+    resource_name = "Untitled"
+    if pages:
+        resource_name = get_page_title(pages[0])
+
+    if progress_callback:
+        await progress_callback(
+            f"🔑 Notion Resource Type: {resource_type.capitalize()}\n" +
+            (f"📚 Pages in Database: {len(pages)}\n" if resource_type == "database" else "") +
+            f"🪪 Resource Name: {resource_name}\n" +
+            "🔄 Syncing..."
+        )
+
+async def _process_page_content(
+    notion_client: NotionClient,
+    page: Dict,
+    resource_id: str
+) -> tuple[List, List, List]:
+    """Process a single page including child pages"""
+
+    texts = []
+    metadatas = []
+    ids = []
+
+    result = await notion_client.get_page_content(page["id"])
+    content = result["content"]
+    child_pages = result["child_pages"]
+
+    # Ensure content is always a string
+    if isinstance(content, tuple):
+        content = "\n\n".join(str(item) for item in content if item)
+    elif not isinstance(content, str):
+        content = str(content) if content is not None else ""
+
+    content = content.strip()
+    if not content:
+        return texts, ids, metadatas
+    
+    title = get_page_title(page)
+    try:
+        metadata = extract_page_metadata(page, resource_id=resource_id)
+        combined_content = f"""Title: {title}
+Tags: {metadata.get("tags", "None")}
+Content: 
+{content}"""
+        
+        texts.append(combined_content)
+        # Ensure ID is a string
+        page_id = str(page["id"]) if page["id"] else ""
+        ids.append(f"notion_{page_id}")
+        metadatas.append(metadata)
+
+        # Process child pages separately
+        for child_page in child_pages:
+            try:
+                child_result = await notion_client.get_page_content(child_page["id"])
+                child_content = child_result["content"]
+                
+                # Ensure child_content is always a string
+                if isinstance(child_content, tuple):
+                    child_content = "\n\n".join(str(item) for item in child_content if item)
+                elif not isinstance(child_content, str):
+                    child_content = str(child_content) if child_content is not None else ""
+                
+                child_content = child_content.strip()
+                if not child_content:
+                    logger.warning(f"Empty content for child page {child_page['id']}, skipping")
+                    continue
+                
+                child_metadata = extract_page_metadata(child_page, resource_id=resource_id)
+                child_metadata["parent_id"] = page["id"]
+
+                child_combined_content = f"""Title: {child_metadata['title']}
+Tags: {child_metadata.get('tags', 'None')}
+Content: 
+{child_content}"""
+                
+                texts.append(child_combined_content)
+                # Ensure child ID is a string
+                child_id = str(child_page["id"]) if child_page["id"] else ""
+                ids.append(f"notion_{child_id}")
+                metadatas.append(child_metadata)
+            except Exception as e:
+                logger.error(f"Error processing child page {child_page['id']}: {str(e)}")
+                # Continue processing other child pages even if there's an error with one
+    
+    except Exception as e:
+        logger.error(f"Error processing page {page['id']}: {str(e)}")
+        # Continue execution even if there's an error with metadata extraction
+    
+    return texts, ids, metadatas

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import httpx
 import asyncio
 from datetime import datetime
@@ -155,52 +155,82 @@ class NotionClient:
             raise
     
     async def get_page_content(self, page_id: str) -> str:
-        """Extract all text content from a page"""
+        """Extract text content from a page and return any child pages"""
         blocks = await self.get_block_children(page_id)
-        return await self._process_blocks(blocks["results"])
+        result = await self._process_blocks(blocks["results"])
+        return result
     
     async def get_block_children(self, block_id: str) -> List[Dict[str, Any]]:
         """Retrieve all child blocks of a given block."""
         url = f"{self.base_url}/blocks/{block_id}/children"
         return await self._make_requests("GET", url)
     
-    async def _process_blocks(self, blocks: List[Dict]) -> str:
-        """Process blocks and extract text content."""
+    async def _process_blocks(self, blocks: List[Dict]) -> Union[str, Dict]:
+        """Process blocks and extract text content. Returns child_pages in separate array"""
         content = []
+        child_pages = []
+        
+        async def process_block_children(block: Dict) -> None:
+            """Helper function to process children of any block type"""
+            if block.get("has_children"):
+                try:
+                    children = await self.get_block_children(block["id"])
+                    child_result = await self._process_blocks(children["results"])
+
+                    # Collect child pages from nested blocks
+                    if isinstance(child_result, dict):
+                        child_pages.extend(child_result["child_pages"])
+                        if block["type"] != "child_page":
+                            content.append(child_result["content"])
+                except Exception as e:
+                    self.logger.warning(f"Error processing children of block {block['id']}: {str(e)}")
+
         for block in blocks:
             try:
                 block_type = block["type"]
+                if block_type == "child_page":  #TODO handle child database
+                    child_page_title = block.get(block_type, {}).get("title", "Untitled")
+                    self.logger.debug(f"Found child page: ID={block['id']}, Title={child_page_title}")
+                
+                    child_page_data = {
+                        "id": block["id"],
+                        "type": "page",
+                        "title": child_page_title,
+                        "last_edited_time": block.get("last_edited_time"),
+                        "created_time": block.get("created_time"),
+                        "parent": block.get("parent")
+                    }
+
+                    if "created_by" in block:
+                        child_page_data["created_by"] = block["created_by"]
+                    if "last_edited_by" in block:
+                        child_page_data["last_edited_by"] = block["last_edited_by"]
+                    
+                    child_pages.append(child_page_data)
+                    continue                    
+
                 handler = self._block_handlers.get(block_type)
                 if handler:
-                    try:
-                        if block_type == "child_page": #TODO handle database
-                            if processed_text := await handler(block, self):
-                                content.append(processed_text)
-                        else:
-                            if processed_text := handler(block):
-                                content.append(processed_text)
-                        self.logger.debug(f"Processed block type: {block_type}")
-                    except Exception as e:
-                        self.logger.warning(f"Error processing block type {block_type}: {str(e)}. Skipping block.")
-                        continue
-                else:
-                    self.logger.debug(f"Unhandled block type: {block_type}. Any child blocks will still be processed")
+                    processed_text = handler(block)
+                    # Check if the result is a coroutine (async function) and await it if necessary
+                    if asyncio.iscoroutine(processed_text):
+                        processed_text = await processed_text
+                    if processed_text:
+                        content.append(processed_text)
+                    #self.logger.debug(f"Processed block type: {block_type}")
+                #else:
+                    #self.logger.debug(f"Unhandled block type: {block_type}. Any child blocks will still be processed")
 
-                # Recursively process child blocks if they exist
-                if block.get("has_children"):
-                    try:
-                        children = await self.get_block_children(block["id"])
-                        if child_content := await self._process_blocks(children["results"]):
-                            indented_content = "\n".join(f"    {line}" for line in child_content.split("\n"))
-                            content.append(indented_content)
+                await process_block_children(block)
 
-                    except Exception as e:
-                        self.logger.warning(f"Error processing child blocks for block {block['id']}: {str(e)}. Skipping children")
-                        continue
             except Exception as e:
                 self.logger.warning(f"Error processing block {block['id']}: {str(e)}. Skipping block.")
                 continue
-        return "\n".join(content)
+
+        #self.logger.debug(f"Found {len(child_pages)} child pages under block '{block.get(block['type'], {}).get('title', 'Untitled')}', id={block['id']}")
+        return {
+            "content": "\n".join(content) if content else "",
+            "child_pages": child_pages
+        }
 
 
-                    

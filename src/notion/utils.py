@@ -1,35 +1,61 @@
+from typing import Dict, List, Any, Optional
 import logging
-from typing import Dict
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 def get_page_title(page: Dict) -> str:
-    """Extract title from a Notion page"""
-
+    """Extract title from Notion page"""
+    title = ""
     try:
-        # For database pages - try Name property first
-        if title := page.get('properties', {}).get('Name', {}).get('title', [{}])[0].get('plain_text'):
-            return title
-
-        # Try Title property for database pages
-        if title := page.get('properties', {}).get('Title', {}).get('title', [{}])[0].get('plain_text'):
-            return title
-
-        # For standalone pages
-        properties = page.get('properties', {})
-        if 'title' in properties and isinstance(properties['title'], dict):
-            title_array = properties['title'].get('title', [])
-            if title_array and 'plain_text' in title_array[0]:
-                return title_array[0]['plain_text']
-
-        # Try icon + title combination
-        icon = page.get('icon', {}).get('emoji', '')
-        if title := page.get('properties', {}).get('title', [{}])[0].get('plain_text'):
-            return f"{icon} {title}".strip()
-
-        return "Untitled"
-
+        if page.get("properties") and page["properties"].get("title"):
+            title_property = page["properties"]["title"]
+            if title_property.get("title"):
+                title = "".join([t.get("plain_text", "") for t in title_property["title"]])
+        elif page.get("title"):
+            # Handle different title formats
+            if isinstance(page["title"], list):
+                title = "".join([t.get("plain_text", "") for t in page["title"]])
+            elif isinstance(page["title"], dict) and page["title"].get("plain_text"):
+                title = page["title"]["plain_text"]
+            else:
+                title = str(page["title"])
     except Exception as e:
-        logger.warning(f"Error extracting title from page {page.get('id')}: {page.get('properties')}, Error: {str(e)}")
-        return "Untitled"
+        logger.error(f"Error extracting page title: {str(e)}")
     
+    # Default title if none found
+    return title or page.get("id", "Untitled")
+
+def extract_page_metadata(page: Dict, resource_id: Optional[str] = None) -> Dict:
+    """Extract metadata from Notion page"""
+    last_edited_time = page.get("last_edited_time")
+    
+    # If still not found, use current time as last resort
+    if not last_edited_time:
+        logger.debug(f"No last_edited_time found for page {page.get('id', 'unknown')}, using current time")
+        last_edited_time = datetime.now().isoformat()
+
+    metadata = {
+        "id": page.get("id", ""),
+        "title": get_page_title(page),
+        "url": page.get("url", ""),
+        "source": "notion",
+        "last_modified": last_edited_time,
+        "created_time": page.get("created_time", ""),
+    }
+    
+    # Add resource_id if provided
+    if resource_id:
+        metadata["resource_id"] = resource_id
+        
+    # Extract tags if available
+    tags = []
+    if page.get("properties"):
+        for prop_name, prop_value in page["properties"].items():
+            if prop_value.get("type") == "multi_select":
+                for tag in prop_value.get("multi_select", []):
+                    tags.append(tag.get("name", ""))
+                    
+    metadata["tags"] = tags if tags else None
+    
+    return metadata
