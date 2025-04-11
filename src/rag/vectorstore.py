@@ -415,7 +415,7 @@ class VectorStore:
                     
             except Exception as e:
                 self.logger.error(f"Error updating document {doc_id}: {str(e)}")
-                
+
         self.logger.debug(f"Updated {successfully_updated} documents")
         return successfully_updated
 
@@ -633,6 +633,10 @@ class VectorStore:
         updated_count = 0
         deleted_count = 0
 
+        # Track actual page deletions (not chunks or update-related deletions)
+        true_page_deletions = 0
+        deleted_page_ids = set()        
+
         # Process deletions
         if to_delete:
             to_delete_list = await self.filter_deletions(
@@ -643,7 +647,26 @@ class VectorStore:
             )
 
             if to_delete_list:
-                self.logger.info(f"Deleting {len(to_delete_list)} documents/fragments")        
+                self.logger.info(f"Deleting {len(to_delete_list)} documents/fragments")
+
+                #Identify and count true page deletions (not chunks)
+                for item_id in to_delete_list:
+                    # Check if this is a parent document (not a chunk)
+                    is_chunk = False
+                    for meta in existing_docs["metadatas"]:
+                        if meta.get("chunk_id") == item_id or meta.get("parent_id") is not None:
+                            is_chunk = True
+                            break
+                            
+                    # If it's not a chunk and not part of an update operation
+                    if not is_chunk and (not to_update or item_id not in [u[0] for u in to_update]):
+                        # Extract the base ID without the "notion_" prefix
+                        base_id = item_id.replace("notion_", "") if item_id.startswith("notion_") else item_id
+                        deleted_page_ids.add(base_id)
+                
+                # Count unique deleted pages
+                true_page_deletions = len(deleted_page_ids)
+
                 async def delete_batch(batch):
                     await self.delete(batch) 
                 try:
@@ -713,7 +736,7 @@ class VectorStore:
         return {
             "added": added_count,
             "updated": updated_count,
-            "deleted": deleted_count
+            "deleted": true_page_deletions
         }
 
     async def query(
