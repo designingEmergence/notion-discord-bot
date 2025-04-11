@@ -49,7 +49,9 @@ class VectorStore:
             else:
                 self.embedding_function = embedding_function
 
+            self.logger.info(f"Initializing with collection_name: {collection_name}, type: {type(collection_name)}")
             self.collection_name = collection_name or "notion_docs"
+            self.logger.debug(f"Final collection_name: {self.collection_name}, type: {type(self.collection_name)}")
             self.chunk_size = min(chunk_size, 6000)
 
             # Get or create collection
@@ -58,19 +60,32 @@ class VectorStore:
                 try:
                     # Ensure collection_name is a string
                     if not isinstance(self.collection_name, str):
+                        self.logger.error(f"collection_name is not a string! Type: {type(self.collection_name)}, Value: {self.collection_name}")
                         self.logger.warning(f"Converting collection_name from {type(self.collection_name)} to string")
                         self.collection_name = str(self.collection_name)
-                        
+                    
+                    try:
+                        existing_collections = self.client.list_collections()
+                        self.logger.debug(f"Existing collections: {existing_collections}")
+                        for coll in existing_collections:
+                            self.logger.debug(f"Collection: {coll.name}, Type: {type(coll)}")
+                    except Exception as list_err:
+                        self.logger.warning(f"Error listing collections: {list_err}")
+                    
+                    self.logger.debug(f"Attempting to get or create collection: '{self.collection_name}'")
+
                     self.collection = self.client.get_or_create_collection(
                         name=self.collection_name,
                         embedding_function=self.embedding_function,
                         metadata={"hnsw:space": "cosine"}
                     )
+                    self.logger.info(f"Successfully initialized collection: {self.collection_name}")
                     break
                 except Exception as e:
                     if attempt == max_retries - 1:
                         raise
                     self.logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
+                    self.logger.error(f"Error type: {type(e)}")
                     time.sleep(1)
                     
         except Exception as e:

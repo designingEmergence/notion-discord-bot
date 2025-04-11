@@ -271,6 +271,7 @@ class NotionBot(commands.Bot):
         await self.config.init_db()
 
         try:
+            self.logger.debug("Creating ChromaDB client...")
             chroma_client = chroma_client = chromadb.PersistentClient(
                 path="chroma_db",
                 settings=chromadb.Settings(
@@ -278,18 +279,28 @@ class NotionBot(commands.Bot):
                     is_persistent=True
                 )
             )
+            self.logger.debug("Getting collection list...")
             collection_names = chroma_client.list_collections()
+            self.logger.debug(f"Found collections: {collection_names}")
             
             for name in collection_names:
                 self.logger.info(f"Found existing collection: {name}")
                 chunk_size = await self.config.get("chunk_size")
-                self.vector_stores[name] = VectorStore(
-                    collection_name=name,
-                    chunk_size=chunk_size
-                )
+
+                try:
+                    self.vector_stores[name] = VectorStore(
+                        collection_name=name,
+                        chunk_size=chunk_size
+                    )
+                    self.logger.info(f"Successfully initialized vector store for collection: {name}")
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize vector store for collection {name}: {str(e)}")
+            
             
             # If default collection doesn't exist, create it
+            self.logger.debug(f"Checking if default collection exists: {self.default_collection}")
             if self.default_collection not in self.vector_stores:
+                self.logger.debug(f"Creating default collection: {self.default_collection}")
                 chunk_size = await self.config.get("chunk_size")
                 self.vector_stores[self.default_collection] = VectorStore(
                     collection_name=self.default_collection,
