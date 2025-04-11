@@ -56,6 +56,11 @@ class VectorStore:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
+                    # Ensure collection_name is a string
+                    if not isinstance(self.collection_name, str):
+                        self.logger.warning(f"Converting collection_name from {type(self.collection_name)} to string")
+                        self.collection_name = str(self.collection_name)
+                        
                     self.collection = self.client.get_or_create_collection(
                         name=self.collection_name,
                         embedding_function=self.embedding_function,
