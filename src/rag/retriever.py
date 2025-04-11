@@ -128,8 +128,6 @@ class Retriever:
         )
 
         return self.format_context(all_docs)
-
-    
     
     def _rerank_results(self, documents: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
         """Optional: Rerank results using a cross-encoder or other method"""

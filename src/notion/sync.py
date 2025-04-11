@@ -155,6 +155,7 @@ async def _process_page_content(
         metadata = extract_page_metadata(page, resource_id=resource_id)
         combined_content = f"""Title: {title}
 Tags: {metadata.get("tags", "None")}
+URL: {metadata.get("url", "")}
 Content: 
 {content}"""
         
@@ -186,6 +187,7 @@ Content:
 
                 child_combined_content = f"""Title: {child_metadata['title']}
 Tags: {child_metadata.get('tags', 'None')}
+URL: {child_metadata.get("url", "")}
 Content: 
 {child_content}"""
                 

@@ -446,7 +446,7 @@ async def sync_notion(
     resource_id: Optional[str]= None,
     collection_name: Optional[str] = None):
     """Sync Notion content to vector store (Admin only)"""
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer()
 
     try:
         if not resource_id:

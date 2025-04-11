@@ -4,8 +4,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 def _extract_rich_text(rich_text: List[Dict]) -> str:
-    """Extract plain text from rich text objects."""
-    return " ".join(text["plain_text"] for text in rich_text)
+    """Extract plain text from rich text objects, preserving URLs."""
+    result = []
+    for text in rich_text:
+        plain_text = text["plain_text"]
+        if "href" in text and text["href"]:
+            result.append(f"[{plain_text}]({text['href']})")
+        else:
+            result.append(plain_text)
+    return " ".join(result)
 
 def _handle_paragraph(block: Dict) -> str:
     text = _extract_rich_text(block["paragraph"]["rich_text"])

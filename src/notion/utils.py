@@ -34,11 +34,16 @@ def extract_page_metadata(page: Dict, resource_id: Optional[str] = None) -> Dict
     if not last_edited_time:
         logger.debug(f"No last_edited_time found for page {page.get('id', 'unknown')}, using current time")
         last_edited_time = datetime.now().isoformat()
+    
+    # Get page URL or construct it
+    page_url = page.get("url", "")
+    if not page_url and page.get("id"):
+        page_url = f"https://www.notion.so/post-office/{page['id'].replace('-', '')}?pvs=4"
 
     metadata = {
         "id": page.get("id", ""),
         "title": get_page_title(page),
-        "url": page.get("url", ""),
+        "url": page_url,
         "source": "notion",
         "last_modified": last_edited_time,
         "created_time": page.get("created_time", ""),

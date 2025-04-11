@@ -188,9 +188,22 @@ class NotionClient:
         for block in blocks:
             try:
                 block_type = block["type"]
+                block_id = block["id"]
+                parent = block.get("parent", {})
+                parent_id = parent.get("page_id") or parent.get("database_id")
+
+                # Generate block URL if we have a parent ID (page or database)
+                block_url = None
+                if parent_id:
+                    # Format: https://www.notion.so/{workspace_name}/{page-id}?pvs=4#{block-id}
+                    # We need to add a way to get workspace name dynamically or use parent ID
+                    block_url = f"https://www.notion.so/post-office/{parent_id.replace('-', '')}?pvs=4#{block_id.replace('-', '')}"
+
                 if block_type == "child_page":  #TODO handle child database
                     child_page_title = block.get(block_type, {}).get("title", "Untitled")
                     self.logger.debug(f"Found child page: ID={block['id']}, Title={child_page_title}")
+
+                    page_url = f"https://www.notion.so/post-office/{block_id.replace('-', '')}?pvs=4"
                 
                     child_page_data = {
                         "id": block["id"],
@@ -198,7 +211,8 @@ class NotionClient:
                         "title": child_page_title,
                         "last_edited_time": block.get("last_edited_time"),
                         "created_time": block.get("created_time"),
-                        "parent": block.get("parent")
+                        "parent": block.get("parent"),
+                        "url": page_url  
                     }
 
                     if "created_by" in block:
@@ -215,11 +229,10 @@ class NotionClient:
                     # Check if the result is a coroutine (async function) and await it if necessary
                     if asyncio.iscoroutine(processed_text):
                         processed_text = await processed_text
+                    if processed_text and block_url:
+                        processed_text = f"{processed_text} [Block URL: {block_url}]"
                     if processed_text:
                         content.append(processed_text)
-                    #self.logger.debug(f"Processed block type: {block_type}")
-                #else:
-                    #self.logger.debug(f"Unhandled block type: {block_type}. Any child blocks will still be processed")
 
                 await process_block_children(block)
 
@@ -227,7 +240,6 @@ class NotionClient:
                 self.logger.warning(f"Error processing block {block['id']}: {str(e)}. Skipping block.")
                 continue
 
-        #self.logger.debug(f"Found {len(child_pages)} child pages under block '{block.get(block['type'], {}).get('title', 'Untitled')}', id={block['id']}")
         return {
             "content": "\n".join(content) if content else "",
             "child_pages": child_pages
