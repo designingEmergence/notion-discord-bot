@@ -424,7 +424,6 @@ class NotionBot(commands.Bot):
                             {"role": "user", "content": question}
                         ]
 
-                        #TODO move below options to a config file/writeable db and create discord command to update this config
                         llm_model = await self.config.get("llm_model")
                         response = await self.openai_client.chat.completions.create(
                             model=llm_model,

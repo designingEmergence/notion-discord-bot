@@ -618,7 +618,7 @@ class VectorStore:
 
             #  Only process parent documents
             if not is_chunk and resource_id in existing_resource_ids and doc_id not in tracked_doc_ids:
-                    self.logger.info(f"Marking document {doc_id}: {meta.get("title")} for deletion")
+                    self.logger.info(f"Marking document {doc_id}: {meta.get('title')} for deletion")
                     to_delete.add(doc_id)
                     
                     # Also delete all associated chunks
@@ -759,4 +759,3 @@ class VectorStore:
         except Exception as e:
             self.logger.error(f"Error embedding texts: {str(e)}")
             raise RuntimeError(f"Failed to create embeddings: {str(e)}") from e
-    
