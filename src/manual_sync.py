@@ -8,8 +8,8 @@ from notion.sync import sync_notion_content
 import logging
 
 logging.basicConfig(
-    level=logging.DEBUG,  # Change to DEBUG or INFO
-    format='%(levelname)s: %(message)s',  # Simplified format
+    level=logging.INFO,  # Change to INFO for production
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler('sync.log')

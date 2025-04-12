@@ -27,8 +27,8 @@ class LogFilter(logging.Filter):
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Change to DEBUG
-    format='%(levelname)s: %(message)s',  # Simplified format
+    level=logging.INFO,  # Change from DEBUG to INFO for production
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # More detailed format
     handlers=[
         logging.StreamHandler(sys.stdout),
         logging.FileHandler('bot.log')
@@ -41,6 +41,8 @@ discord_logger.addFilter(LogFilter())
 # Set higher log levels for HTTP libraries to suppress connection logs
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("discord").setLevel(logging.INFO)
+logging.getLogger("chromadb").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 logger.addFilter(LogFilter())

@@ -78,7 +78,7 @@ async def batch_process_async(
         batch = items[i:i+batch_size]
         batch_num = i//batch_size + 1
 
-        logger.debug(f"Processing {description} batch {batch_num}{batch_count}")
+        logger.debug(f"Processing {description} batch {batch_num}/{batch_count}")
 
         try:
             await process_fn(batch)
@@ -93,8 +93,6 @@ async def batch_process_async(
                 raise
             
     return processed_count
-
-
 
 def map_chunks_by_parent(ids: List[str], metadatas: List[Dict]) -> Tuple[Dict[str, List[str]], Dict[str, Set[str]], Set[str]]:
     """Create mappings of chunks to parent documents."""

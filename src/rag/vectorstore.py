@@ -15,87 +15,37 @@ import time
 class VectorStore:
     def __init__(
         self,
-        persist_directory: str = "chroma_db",
-        embedding_function: Optional[Any] = None,
-        collection_name: Optional[str] = None,
-        chunk_size: Optional[int] = 2000
+        collection_name: str = "notion_docs",
+        db_path: str = "chroma_db",
+        chunk_size: int = 1000,
+        logger_name: str = "vectorstore"
     ):
-        try:
-            self.logger = logging.getLogger(__name__)
-            
-            # Debug logging for environment variables
-            api_key = os.getenv("OPENAI_API_KEY")
-                
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY not found in environment")
-
-            # Initialize ChromaDB client
-            os.makedirs(persist_directory, exist_ok=True)
-            self.client = chromadb.PersistentClient(
-                path=persist_directory,
-                settings=chromadb.Settings(
-                    allow_reset=True,
-                    is_persistent=True
-                )
+        self.logger = logging.getLogger(logger_name)
+        self.collection_name = collection_name
+        self.embedding_function = None  # Set up in initialize()
+        self.collection = None  # Set up in initialize()
+        self.db_path = db_path
+        self.chunk_size = chunk_size
+        
+        # Monitor rate limits - don't allow more than 100 requests per minute
+        self.last_minute_requests = []
+        
+        # Setup Chroma client
+        self.client = chromadb.PersistentClient(
+            path=self.db_path,
+            settings=chromadb.Settings(
+                allow_reset=True,
+                is_persistent=True
             )
-
-            # Set default embedding function if none provided
-            if embedding_function is None:
-                from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-                self.embedding_function = OpenAIEmbeddingFunction(
-                    api_key=api_key,
-                    model_name="text-embedding-3-small", 
-                )
-            else:
-                self.embedding_function = embedding_function
-
-            self.logger.info(f"Initializing with collection_name: {collection_name}, type: {type(collection_name)}")
-            self.collection_name = collection_name or "notion_docs"
-            self.logger.debug(f"Final collection_name: {self.collection_name}, type: {type(self.collection_name)}")
-            self.chunk_size = min(chunk_size, 6000)
-
-            # Get or create collection
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    # Ensure collection_name is a string
-                    if not isinstance(self.collection_name, str):
-                        self.logger.error(f"collection_name is not a string! Type: {type(self.collection_name)}, Value: {self.collection_name}")
-                        self.logger.warning(f"Converting collection_name from {type(self.collection_name)} to string")
-                        self.collection_name = str(self.collection_name)
-                    
-                    try:
-                        existing_collections = self.client.list_collections()
-                        self.logger.debug(f"Existing collections: {existing_collections}")
-                        for coll in existing_collections:
-                            self.logger.debug(f"Collection: {coll.name}, Type: {type(coll)}")
-                    except Exception as list_err:
-                        self.logger.warning(f"Error listing collections: {list_err}")
-                    
-                    self.logger.debug(f"Attempting to get or create collection: '{self.collection_name}'")
-
-                    self.collection = self.client.get_or_create_collection(
-                        name=self.collection_name,
-                        embedding_function=self.embedding_function,
-                        metadata={"hnsw:space": "cosine"}
-                    )
-                    self.logger.info(f"Successfully initialized collection: {self.collection_name}")
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    self.logger.warning(f"Attempt {attempt + 1} failed: {str(e)}")
-                    self.logger.error(f"Error type: {type(e)}")
-                    time.sleep(1)
-                    
+        )
+        
+        # Initialize collection
+        try:
+            self.collection = self.client.get_or_create_collection(name=self.collection_name)
+            self.logger.info(f"Initialized collection: {self.collection_name}")
         except Exception as e:
-            if "deprecated configuration" in str(e):
-                raise RuntimeError(
-                    "ChromaDB needs migration. Please run:\n"
-                    "pip install chroma-migrate\n"
-                    "chroma-migrate"
-                ) from e
-            raise RuntimeError(f"Failed to initialize vector store: {str(e)}") from e
+            self.logger.error(f"Error initializing collection: {str(e)}")
+            raise
 
     def chunk_text(self, text: str, max_chars: int = 6000) -> List[str]:
         """Split text into chunks that won't exceed token limit"""
