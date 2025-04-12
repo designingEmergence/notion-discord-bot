@@ -267,6 +267,10 @@ class NotionBot(commands.Bot):
         """Async Initialization"""
         self.logger.info("Initializing Notion Bot components...")
 
+        # Log ChromaDB version
+        import chromadb
+        self.logger.info(f"Running ChromaDB version: {chromadb.__version__}")
+
         #Initialize config database
         await self.config.init_db()
 
@@ -280,21 +284,23 @@ class NotionBot(commands.Bot):
                 )
             )
             self.logger.debug("Getting collection list...")
-            collection_names = chroma_client.list_collections()
-            self.logger.debug(f"Found collections: {collection_names}")
+            collection_list = chroma_client.list_collections()
+            self.logger.debug(f"Found collections: {collection_list}")
             
-            for name in collection_names:
-                self.logger.info(f"Found existing collection: {name}")
-                chunk_size = await self.config.get("chunk_size")
+            for collection in collection_list:
+                if hasattr(collection, 'name'):
+                    name = collection.name
+                    self.logger.info(f"Found existing collection: {name}")
+                    chunk_size = await self.config.get("chunk_size")
 
-                try:
-                    self.vector_stores[name] = VectorStore(
-                        collection_name=name,
-                        chunk_size=chunk_size
-                    )
-                    self.logger.info(f"Successfully initialized vector store for collection: {name}")
-                except Exception as e:
-                    self.logger.error(f"Failed to initialize vector store for collection {name}: {str(e)}")
+                    try:
+                        self.vector_stores[name] = VectorStore(
+                            collection_name=name,
+                            chunk_size=chunk_size
+                        )
+                        self.logger.info(f"Successfully initialized vector store for collection: {name}")
+                    except Exception as e:
+                        self.logger.error(f"Failed to initialize vector store for collection {name}: {str(e)}")
             
             
             # If default collection doesn't exist, create it
