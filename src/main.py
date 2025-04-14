@@ -72,7 +72,7 @@ def parse_args():
 async def main():    
     try:
         args = parse_args()
-        validate_env()
+        #validate_env()
         token = os.getenv('DISCORD_TOKEN')
         logger.debug(f"Token loaded: {token}")  # Debug log token
         

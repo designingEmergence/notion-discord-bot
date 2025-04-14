@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Optional
 from .vectorstore import VectorStore
 from config import ConfigManager
+import logging
 
 class Retriever:
     def __init__(
@@ -10,12 +11,21 @@ class Retriever:
     ):
         self.vector_store = vector_store
         self.config = config_manager
+        self.logger = logging.getLogger(__name__)
     
     async def initialize(self):
         """Initialize configuration values"""
-        self.max_tokens = await self.config.get("max_tokens")  # This could also be configurable
-        self.num_results = await self.config.get("num_retrieved_results")    # This could also be configurable
+        self.max_tokens = await self.config.get("max_tokens")  # TODO: These only change on initiaiize, what happens if config changes via set_config
+        self.num_results = await self.config.get("num_retrieved_results")    # T
         self.similarity_threshold = await self.config.get("similarity_threshold")
+        self.logger.debug(f"Initializing retriever with max_tokens={self.max_tokens}, num_results={self.num_results}, similarity_threshold={self.similarity_threshold}")
+
+    async def update_config(self):
+        """Update configuration values from config manager"""
+        self.max_tokens = await self.config.get("max_tokens")
+        self.num_results = await self.config.get("num_retrieved_results")
+        self.similarity_threshold = await self.config.get("similarity_threshold")
+        self.logger.debug(f"Updated retriever config: max_tokens={self.max_tokens}, num_results={self.num_results}, similarity_threshold={self.similarity_threshold}")
 
     async def get_relevant_documents(
         self,
@@ -33,7 +43,6 @@ class Retriever:
             where=where_filter
         )
         return results
-    
 
     def format_context(self, documents: List[Dict[str, Any]]) -> str:
         """Format retrieved documents into context string"""
@@ -49,10 +58,10 @@ class Retriever:
             url = metadata.get("url", "")
             
             # Skip duplicates with the same title
-            if title in seen_titles:
-                continue
+            # if title in seen_titles:
+            #     continue
             
-            seen_titles.add(title)
+            #seen_titles.add(title)
             contexts.append(f"Title: {title}\nURL: {url}\nContent: {doc}")
 
         return "\n\n---\n\n".join(contexts)
@@ -111,23 +120,26 @@ class Retriever:
         filter_dict: Optional[Dict] = None
     ) -> str:
         """Main method to get formatted context for a query and conversation history"""
-        # Get base results for current query
-        current_results = await self.get_relevant_documents(query, filter_dict)
+        # Get relevant documents in vector store for current query
+        retrieved_docs = await self.get_relevant_documents(query, filter_dict)
 
-        if not conversation_history:
-            return self.format_context(current_results)
+        if not conversation_history or len(conversation_history) <= 1:
+            return self.format_context(retrieved_docs)
 
         #Get additional context from conversation if relevant
-        conversation_text = " ".join([msg["content"] for msg in conversation_history])
-        conversation_results = await self.get_relevant_documents(conversation_text, filter_dict)
+        conversation_text = " ".join([msg["content"] for msg in conversation_history[:-1]])
 
-        all_docs = self._merge_and_rerank_results(
-            current_results,
-            conversation_results,
-            query
-        )
+        if conversation_text.strip():
+            conversation_results = await self.get_relevant_documents(conversation_text, filter_dict)
+            all_docs = self._merge_and_rerank_results(
+                retrieved_docs,
+                conversation_results,
+                query
+            )
+            return self.format_context(all_docs)
+        
+        return self.format_context(retrieved_docs)
 
-        return self.format_context(all_docs)
     
     def _rerank_results(self, documents: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
         """Optional: Rerank results using a cross-encoder or other method"""

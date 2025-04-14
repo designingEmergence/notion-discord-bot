@@ -4,7 +4,6 @@ from rag.utils import (
     convert_ids_to_string, convert_text_to_string, clean_metadata,
     map_chunks_by_parent, add_sync_metadata, batch_process_async
 )
-
 import chromadb 
 import numpy as np
 import logging
@@ -59,7 +58,12 @@ class VectorStore:
                     self.collection = self.client.get_or_create_collection(
                         name=self.collection_name,
                         embedding_function=self.embedding_function,
-                        metadata={"hnsw:space": "cosine"}
+                        metadata={
+                            "hnsw:space": "cosine",        # Better for semantic similarity
+                            "hnsw:construction_ef": 200,    # Better index quality
+                            "hnsw:search_ef": 100,         # Balance between speed/accuracy 
+                            "hnsw:M": 32                   # More connections = better recall
+                        }
                     )
                     break
                 except Exception as e:
@@ -746,11 +750,62 @@ class VectorStore:
         where: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Query the vector store for similar documents"""
-        return self.collection.query(
-            query_texts=[query_text],
-            n_results=n_results,
-            where=where
-        )
+        self.logger.debug(f"Querying with: {query_text}, n_results={n_results}, where={where}")
+        
+        # For small collections, query all documents
+        collection_size = len(self.collection.get()["ids"])
+        if collection_size <= 30: #TODO make configurable
+            results = self.collection.query(
+                query_texts=[query_text],
+                n_results=collection_size,  # Get all documents
+                where=where
+            )
+            distances = results["distances"][0]
+            similarities = [1 - d for d in distances]
+            sorted_indices = sorted(range(len(similarities)), 
+                              key=lambda k: similarities[k],
+                              reverse=True)[:n_results]
+        
+            # Truncate results to requested n_results
+            results["documents"] = [[results["documents"][0][i] for i in sorted_indices]]
+            results["metadatas"] = [[results["metadatas"][0][i] for i in sorted_indices]]
+            results["distances"] = [[results["distances"][0][i] for i in sorted_indices]]
+        
+        else:
+            results =  self.collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                where=where
+            )
+        
+        #Log results for debugging
+        if results["documents"] and results["documents"][0]:
+            self.logger.debug("\nQuery Results Preview:")
+            for i, (doc, metadata, distance) in enumerate(zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0]
+            )):
+                # Calculate similarity score (1 - distance) since ChromaDB returns distances
+                similarity = 1 - distance
+                
+                # Get document preview (first 200 chars)
+                preview = doc[:200] + "..." if len(doc) > 200 else doc
+                
+                # Get document title from metadata
+                title = metadata.get("title", "Untitled")
+                
+                self.logger.debug(
+                    f"\n[{i+1}] Title: {title}"
+                    f"\nSimilarity: {similarity:.3f}"
+                    f"\nPreview: {preview}\n"
+                    f"{'='*50}"
+                )
+
+
+        self.logger.debug(f"Found {len(results.get('documents', [[]])[0])} results")
+
+        return results
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """Helper method to embed texts"""

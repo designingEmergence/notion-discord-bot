@@ -120,8 +120,35 @@ class NotionBot(commands.Bot):
                     # get all config values
                     all_configs = await self.config.get_all()
                     config_values = [f"`{k}` = `{v}`" for k, v in all_configs.items()]
-                    message = "📝 Current Configuration:\n" + "\n".join(config_values)
-                    await interaction.followup.send(message)
+
+                    # Split into chunks to avoid Discord's 2000 character limit
+                    header = "📝 Current Configuration:\n"
+                    chunks = [header]
+                    current_chunk = header
+
+                    for i, config_line in enumerate(config_values):
+                        formatted_line = f"\n`{config_line.split('`')[1]}` = `{config_line.split('`')[3]}`"
+
+                        if len(current_chunk) + len(formatted_line) > 1900:
+                            chunks.append(current_chunk)
+                            current_chunk = f"📝 Configuration (continued):{formatted_line}"
+                        else:
+                            current_chunk += formatted_line
+
+                    if current_chunk and current_chunk not in chunks:
+                        chunks.append(current_chunk)
+
+                    for chunk in chunks:
+                        try:
+                            await interaction.followup.send(chunk)
+                        except Exception as e:
+                            self.logger.error(f"Error sending config chunk: {e}")
+                            await interaction.followup.send(
+                                f"❌ Error displaying all configuration values: {str(e)}",
+                                ephemeral=True
+                            )
+                            break
+                        
             except ValueError as e:
                 await interaction.followup.send(
                     f"❌ {str(e)}", ephemeral=True
@@ -160,6 +187,10 @@ class NotionBot(commands.Bot):
                     raise ValueError(f"Invalid value type. Expected {type(default_value).__name__}, got '{value}'")
                 
                 await self.config.set(key, converted_value)
+                # Update retriever config if it exists
+                if hasattr(self, 'retriever'):
+                    await self.retriever.update_config()
+
                 await interaction.followup.send(
                     f"✅ Successfully set `{key}` to `{converted_value}`"
                 )
@@ -226,7 +257,7 @@ class NotionBot(commands.Bot):
             collection_name: Optional[str] = None,
             confirm: str = None
         ):
-            await interaction.response.defer(ephemeral=True)
+            await interaction.response.defer()
             try:
                 # Validate confirmation
                 if not confirm or confirm.lower() != "confirm":
@@ -356,6 +387,7 @@ class NotionBot(commands.Bot):
         """Get relevant context from both chat history and vector store"""
         # combine current query with relevant history
         conversation = []
+        #REFACTOR: Below (query and message history similarity) into separate function
         try:
             if conversation_history:                
                 #Calculate embeddings for history and current query
@@ -385,29 +417,29 @@ class NotionBot(commands.Bot):
                 max_history = await self.config.get("max_history")
                 conversation.extend(conversation_history[-max_history:])
        
-        
+            self.logger.debug(f"Coversation History: {conversation}")
             # Get relevant documents for both history and current query
-            relevant_docs = await self.retriever.get_context_for_query(
+            relevant_doc_context = await self.retriever.get_context_for_query(
                 query,
                 conversation_history=conversation
             )
 
             # Truncate context if too long (approximately 4000 tokens)
             max_context_chars = await self.config.get("max_content_chars")
-            if len(relevant_docs) > max_context_chars:
-                self.logger.warning(f"Truncating context from {len(relevant_docs)} to {max_context_chars} characters")
-                relevant_docs = relevant_docs[:max_context_chars] + "..."
+            if len(relevant_doc_context) > max_context_chars:
+                self.logger.warning(f"Truncating context from {len(relevant_doc_context)} to {max_context_chars} characters")
+                relevant_doc_context = relevant_doc_context[:max_context_chars] + "..."
 
             self.logger.debug(f"Conversation: {conversation}")
-            self.logger.debug(f"Relevant docs: {relevant_docs}")
+            self.logger.debug(f"Relevant docs: {relevant_doc_context}")
 
-            return relevant_docs, conversation
+            return relevant_doc_context, conversation
         
         except Exception as e:
             self.logger.warning(f"Error processing conversation history: {str(e)}")
             # Fallback: use recent history without similarity filtering
             relevant_docs = await self.retriever.get_context_for_query(query)
-            return relevant_docs, []
+            return relevant_doc_context, []
     
 
     async def on_message(self, message):
