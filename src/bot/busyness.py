@@ -170,21 +170,20 @@ def build_busyness_embed() -> discord.Embed:
     """
     Build a Discord embed showing how busy the space is.
 
-    Returns an emoji-friendly embed with a progress bar,
-    people-device estimate, and a short status message.
+    Returns a simple embed with a short status message.
     """
     data = read_device_data()
 
     if data is None:
         embed = discord.Embed(
-            title="🏠 How Busy Is The Space?",
+            title="How busy is post-office?",
             description=(
                 "🤷 **Can’t read the device count right now.**\n\n"
                 "The scanner might be offline — try again in a minute."
             ),
             color=0x95A5A6,  # grey
         )
-        embed.set_footer(text="If this keeps happening, check the device monitor on the server.")
+        embed.set_footer(text="🕐 Last scan: unknown")
         return embed
 
     device_count = data.get("device_count", 0)
@@ -192,31 +191,21 @@ def build_busyness_embed() -> discord.Embed:
     stale = _is_stale(timestamp)
 
     level = _get_level(device_count)
-    people_devices = max(0, device_count - DEFAULT_DEVICES)
-    progress_bar = _build_progress_bar(level.bar_fill)
     flavour = random.choice(level.messages)
     time_ago = _time_ago(timestamp)
 
-    description_lines = [
-        f"## {level.emoji} {level.name} {level.emoji}",
-        "",
-        f"```{progress_bar}```",
-        "",
-        f"👥 **~{people_devices}** people-ish devices connected",
-        f"🕐 Last scan: **{time_ago}**",
-    ]
-
-    if stale:
-        description_lines.append("\n⚠️ *Latest scan is a bit old — data may be out of date.*")
-
-    description_lines.extend(["", f"*\"{flavour}\"*"])
+    # Minimal, friendly output (status line + emoji; last scan in footer)
+    description_lines = [f"\"{flavour}\" {level.emoji}"]
 
     embed = discord.Embed(
-        title="🏠 How Busy Is The Space?",
+        title="How busy is post-office?",
         description="\n".join(description_lines),
         color=level.color,
     )
 
-    embed.set_footer(text="📡 Device count from the network scanner")
+    footer = f"🕐 Last scan: {time_ago}"
+    if stale:
+        footer += " (may be out of date)"
+    embed.set_footer(text=footer)
 
     return embed
