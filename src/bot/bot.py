@@ -7,6 +7,7 @@ from notion.sync import sync_notion_content
 from rag.vectorstore import VectorStore
 from rag.retriever import Retriever
 from config import ConfigManager
+from bot.busyness import build_busyness_embed
 from openai import AsyncOpenAI
 import numpy as np
 from functools import wraps
@@ -300,6 +301,15 @@ class NotionBot(commands.Bot):
                     f"❌ Error clearing collection: {str(e)}",
                     ephemeral=True
                 )
+
+        # ── How Busy command (public — everyone can use it) ─────────────
+        @self.tree.command(
+            name="how-busy",
+            description="Check how busy the space is right now! 🏠"
+        )
+        async def how_busy(interaction: discord.Interaction):
+            embed = build_busyness_embed()
+            await interaction.response.send_message(embed=embed)
                     
     async def setup_hook(self):
         """Async Initialization"""
@@ -361,8 +371,50 @@ class NotionBot(commands.Bot):
 
         self.logger.info("syncing commands...")
         try:
-            await self.tree.sync()
-            self.logger.info("commands synced")
+            guild_ids_env = os.getenv("DISCORD_GUILD_IDS", "").strip()
+            single_guild_id_env = os.getenv("DISCORD_GUILD_ID", "").strip()
+
+            # Option B: fast per-guild sync (recommended for self-hosted bots)
+            guild_id_strings: list[str] = []
+            if guild_ids_env:
+                guild_id_strings = [s.strip() for s in guild_ids_env.split(",") if s.strip()]
+            elif single_guild_id_env:
+                guild_id_strings = [single_guild_id_env]
+
+            if guild_id_strings:
+                total_synced = 0
+                for guild_id_str in guild_id_strings:
+                    try:
+                        guild = discord.Object(id=int(guild_id_str))
+                    except ValueError:
+                        self.logger.warning(
+                            "Invalid guild id %r in DISCORD_GUILD_IDS/DISCORD_GUILD_ID; skipping",
+                            guild_id_str,
+                        )
+                        continue
+
+                    # Guild commands typically appear immediately.
+                    self.tree.copy_global_to(guild=guild)
+                    synced = await self.tree.sync(guild=guild)
+                    total_synced += len(synced)
+                    self.logger.info("Synced %s command(s) to guild %s", len(synced), guild_id_str)
+
+                if total_synced == 0:
+                    self.logger.warning(
+                        "No guild command syncs succeeded; falling back to global command sync"
+                    )
+                    synced = await self.tree.sync()
+                    self.logger.info(
+                        "Synced %s global command(s) (can take time to appear in Discord)",
+                        len(synced),
+                    )
+            else:
+                # Global commands can take time to propagate, but require no guild config.
+                synced = await self.tree.sync()
+                self.logger.info(
+                    "Synced %s global command(s) (can take time to appear in Discord)",
+                    len(synced),
+                )
         except Exception as e:
             self.logger.error(f"Error syncing commands: {e}")
             raise e
