@@ -7,6 +7,7 @@ from notion.sync import sync_notion_content
 from rag.vectorstore import VectorStore
 from rag.retriever import Retriever
 from config import ConfigManager
+from bot.busyness import build_busyness_embed
 from openai import AsyncOpenAI
 import numpy as np
 from functools import wraps
@@ -300,6 +301,15 @@ class NotionBot(commands.Bot):
                     f"❌ Error clearing collection: {str(e)}",
                     ephemeral=True
                 )
+
+        # ── How Busy command (public — everyone can use it) ─────────────
+        @self.tree.command(
+            name="how-busy",
+            description="Check how busy the space is right now! 🏠"
+        )
+        async def how_busy(interaction: discord.Interaction):
+            embed = build_busyness_embed()
+            await interaction.response.send_message(embed=embed)
                     
     async def setup_hook(self):
         """Async Initialization"""
