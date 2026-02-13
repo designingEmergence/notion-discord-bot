@@ -169,5 +169,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+chroma_db/
 chroma_db/chroma.sqlite3
 chroma_db/b17d390a-fa80-4ab1-8f91-cbde8cbfb67a/length.bin

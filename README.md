@@ -1,69 +1,145 @@
-# README.md content for the Notion Discord RAG project
+# Notion Discord RAG (Self-Hosted)
 
-# Notion Discord RAG
+This repository runs a Discord + Notion RAG bot using:
 
-This project is a Discord bot that integrates with Notion to answer questions using retrieval-augmented generation (RAG). The bot retrieves information from Notion and processes it to provide relevant answers to user queries.
+- Python bot service
+- PostgreSQL (for bot config state)
+- ChromaDB persisted on disk (for embeddings/doc vectors)
+- Docker Compose for deployment and restart management
 
-## Features
+## Architecture
 
-- Connects to Notion API to fetch data.
-- Processes user commands in Discord.
-- Utilizes retrieval-augmented generation for enhanced responses.
-- Supports various commands to interact with Notion data.
+- `bot` container: runs `python src/main.py`
+- `postgres` container: stores `bot_config` table
+- `chroma_db/`: persisted locally on host via bind mount
+- health endpoint: `http://127.0.0.1:8080/`
 
-## Project Structure
+## Prerequisites
 
-```
-notion-discord-rag
-├── src
-│   ├── bot
-│   │   ├── __init__.py
-│   │   ├── bot.py
-│   │   └── commands.py
-│   ├── notion
-│   │   ├── __init__.py
-│   │   ├── client.py
-│   │   └── parser.py
-│   ├── rag
-│   │   ├── __init__.py
-│   │   ├── embeddings.py
-│   │   ├── retriever.py
-│   │   └── vectorstore.py
-│   ├── config.py
-│   └── main.py
-├── requirements.txt
-├── .env.example
-└── README.md
-```
+- Linux server (Ubuntu/Debian recommended)
+- Docker Engine + Docker Compose plugin
+- A Discord bot token
+- A Notion integration token + resource ID
+- OpenAI API key
 
-## Installation
+## 1) Server setup
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/notion-discord-rag.git
-   cd notion-discord-rag
-   ```
+### Install Docker (Ubuntu/Debian)
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. Set up your environment variables by copying `.env.example` to `.env` and filling in the necessary values.
-
-## Usage
-
-To run the bot, execute the following command:
-```
-python src/main.py
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-Make sure to have your Discord bot token and Notion API key set in your environment variables.
+## 2) Clone and configure
 
-## Contributing
+```bash
+git clone https://github.com/designingEmergence/notion-discord-bot.git
+cd notion-discord-bot
+cp .env.example .env
+```
 
-Contributions are welcome! Please open an issue or submit a pull request for any improvements or bug fixes.
+Fill `.env` with real values:
+
+- `DISCORD_TOKEN`
+- `NOTION_TOKEN`
+- `NOTION_RESOURCE_ID`
+- `OPENAI_API_KEY`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `POSTGRES_DB`
+- `DATABASE_URL` (format: `postgresql://user:password@postgres:5432/dbname`)
+- `ADMIN_IDS`
+
+## 3) Secure secrets on shared servers
+
+Follow the dedicated runbook in [docs/SERVER_SECRETS_SETUP.md](docs/SERVER_SECRETS_SETUP.md).
+
+Minimum recommended setup:
+
+```bash
+sudo useradd -r -s /usr/sbin/nologin botservice
+sudo mkdir -p /opt/notion-bot/secrets
+sudo cp .env /opt/notion-bot/secrets/.env
+sudo chown botservice:botservice /opt/notion-bot/secrets/.env
+sudo chmod 600 /opt/notion-bot/secrets/.env
+```
+
+## 4) Start the stack
+
+Standard local deployment:
+
+```bash
+docker compose up -d --build
+```
+
+Shared server deployment (recommended with protected env file):
+
+```bash
+sudo -u botservice docker compose --env-file /opt/notion-bot/secrets/.env up -d --build
+```
+
+## 5) Verify and operate
+
+```bash
+docker compose ps
+docker compose logs -f bot
+docker compose logs -f postgres
+curl http://127.0.0.1:8080/
+```
+
+Common operations:
+
+```bash
+docker compose restart bot
+docker compose pull
+docker compose up -d
+docker compose down
+```
+
+## 6) Backups and maintenance
+
+### PostgreSQL backup
+
+```bash
+mkdir -p backups
+docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backups/postgres_$(date +%F).sql
+```
+
+### PostgreSQL restore
+
+```bash
+cat backups/postgres_YYYY-MM-DD.sql | docker compose exec -T postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+```
+
+### ChromaDB backup
+
+```bash
+tar -czf backups/chroma_db_$(date +%F).tar.gz chroma_db
+```
+
+### Recommended maintenance cadence
+
+- Daily: check `docker compose ps` and bot logs
+- Weekly: backup Postgres + `chroma_db`
+- Monthly: pull updated base images and redeploy
+
+## 7) Migration from Railway
+
+1. Export Railway Postgres `bot_config` table with `pg_dump`
+2. Deploy this self-hosted stack
+3. Import dump into local Postgres
+4. Validate bot commands and sync behaviour
+5. Decommission Railway resources
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
+MIT. See [LICENSE](LICENSE).

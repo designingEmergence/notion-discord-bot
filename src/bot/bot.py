@@ -25,7 +25,7 @@ def admin_only():
     return app_commands.check(predicate)
 
 class NotionBot(commands.Bot):
-    def __init__(self, use_public_db: bool = False):
+    def __init__(self):
         
         # Validate OpenAI API key is present
         if not os.getenv("OPENAI_API_KEY"):
@@ -41,7 +41,7 @@ class NotionBot(commands.Bot):
         self.vector_stores = {}
         self.default_collection = os.getenv("COLLECTION_NAME", "notion_docs")
         self.openai_client = AsyncOpenAI()
-        self.config = ConfigManager(use_public_db=use_public_db)
+        self.config = ConfigManager()
 
         #Register discord commands
 

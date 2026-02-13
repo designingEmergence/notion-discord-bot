@@ -8,5 +8,4 @@ chromadb==1.0.4
 tiktoken
 notion-client
 python-dotenv
-supervisor==4.2.5
 asyncpg
