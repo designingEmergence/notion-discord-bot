@@ -16,7 +16,7 @@ class ConfigManager:
         "max_content_chars": 12000,
         "max_tokens": 3000,
         "num_retrieved_results": 5,
-        "llm_model": "gpt-4",
+        "llm_model": "gpt-5-mini",
         "embedding_model": "text-embedding-3-small"
     }
 
@@ -71,6 +71,15 @@ class ConfigManager:
                     return str(value).lower() == 'true'
                 elif isinstance(default_value, (int, float)):
                     return type(default_value)(value)
+                elif isinstance(default_value, str) and isinstance(value, str):
+                    normalized = value.strip()
+                    if (
+                        len(normalized) >= 2
+                        and normalized[0] == normalized[-1]
+                        and normalized[0] in {'"', "'"}
+                    ):
+                        return normalized[1:-1]
+                    return normalized
                 
             return value
 

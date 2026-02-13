@@ -182,7 +182,14 @@ class NotionBot(commands.Bot):
                     elif isinstance(default_value, (int, float)):
                         converted_value = type(default_value)(value)
                     else:
-                        converted_value = value
+                        cleaned_value = value.strip()
+                        if (
+                            len(cleaned_value) >= 2
+                            and cleaned_value[0] == cleaned_value[-1]
+                            and cleaned_value[0] in {"\"", "'"}
+                        ):
+                            cleaned_value = cleaned_value[1:-1]
+                        converted_value = cleaned_value
                 except ValueError:
                     raise ValueError(f"Invalid value type. Expected {type(default_value).__name__}, got '{value}'")
                 
