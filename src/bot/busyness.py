@@ -48,7 +48,7 @@ class BusynessLevel:
 # ── Very-quiet tier (device_count < QUIET_THRESHOLD) ────────────────────────
 VERY_QUIET = BusynessLevel(
     name="Very Quiet",
-    emoji="🌿😌",
+    emoji="😌",
     color=0x2ECC71,  # bright green
     messages=[
         "It's probably just you and the printer.",
@@ -65,7 +65,7 @@ VERY_QUIET = BusynessLevel(
 GRADIENT_TIERS: list[tuple[int, BusynessLevel]] = [
     (3, BusynessLevel(
         name="Quiet",
-        emoji="🍃🌱",
+        emoji="🍃",
         color=0x27AE60,  # green
         messages=[
             "Just a couple of people. Peaceful.",
@@ -77,7 +77,7 @@ GRADIENT_TIERS: list[tuple[int, BusynessLevel]] = [
     )),
     (7, BusynessLevel(
         name="Light",
-        emoji="🌤️☕",
+        emoji="☕",
         color=0xF1C40F,  # yellow
         messages=[
             "A few people around, but still easy to focus.",
@@ -89,7 +89,7 @@ GRADIENT_TIERS: list[tuple[int, BusynessLevel]] = [
     )),
     (13, BusynessLevel(
         name="Moderate",
-        emoji="☕👥",
+        emoji="👥",
         color=0xF39C12,  # amber
         messages=[
             "A good crowd — lively but workable.",
@@ -101,7 +101,7 @@ GRADIENT_TIERS: list[tuple[int, BusynessLevel]] = [
     )),
     (20, BusynessLevel(
         name="Busy",
-        emoji="🔥🐝",
+        emoji="🐝",
         color=0xE67E22,  # orange
         messages=[
             "It's filling up! Expect company.",
@@ -113,7 +113,7 @@ GRADIENT_TIERS: list[tuple[int, BusynessLevel]] = [
     )),
     (9999, BusynessLevel(
         name="Very Lively",
-        emoji="🎉🚀",
+        emoji="🚀",
         color=0xE74C3C,  # red
         messages=[
             "Full house energy!",
