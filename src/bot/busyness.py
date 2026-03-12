@@ -254,7 +254,7 @@ def build_busyness_embed() -> discord.Embed:
         color=level.color,
     )
 
-    footer = f"�� Last scan: {time_ago}"
+    footer = f"🕐 Last scan: {time_ago}"
     if stale:
         footer += " (may be out of date)"
     embed.set_footer(text=footer)
