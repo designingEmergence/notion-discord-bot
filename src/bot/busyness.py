@@ -244,7 +244,7 @@ def build_busyness_embed() -> discord.Embed:
     time_ago = _time_ago(timestamp)
 
     description = (
-        f"{level.emoji} **{level.name}** — {people_range}\n"
+        f"{level.emoji} **{level.name}**: {people_range}\n"
         f"\"{flavour}\""
     )
 
