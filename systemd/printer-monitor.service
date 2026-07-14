@@ -1,0 +1,9 @@
+[Unit]
+Description=Poll Post Office printer ink status
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/default/printer-monitor
+ExecStart=/usr/local/bin/printer_monitor.py

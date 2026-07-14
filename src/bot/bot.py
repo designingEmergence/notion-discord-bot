@@ -9,6 +9,7 @@ from rag.retriever import Retriever
 from config import ConfigManager
 from bot.busyness import build_busyness_embed
 from bot.replies import split_message, ERROR_REPLY
+from bot.printer_status import build_printer_status_embed
 from openai import AsyncOpenAI
 import numpy as np
 from functools import wraps
@@ -310,6 +311,15 @@ class NotionBot(commands.Bot):
         )
         async def how_busy(interaction: discord.Interaction):
             embed = build_busyness_embed()
+            await interaction.response.send_message(embed=embed)
+
+        # ── Printer status command (public — everyone can use it) ───────
+        @self.tree.command(
+            name="printer-status",
+            description="Check the printer's ink status! 🖨️"
+        )
+        async def printer_status(interaction: discord.Interaction):
+            embed = build_printer_status_embed()
             await interaction.response.send_message(embed=embed)
                     
     async def setup_hook(self):
