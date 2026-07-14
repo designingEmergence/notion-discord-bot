@@ -34,7 +34,8 @@ class VectorStore:
                 path=persist_directory,
                 settings=chromadb.Settings(
                     allow_reset=True,
-                    is_persistent=True
+                    is_persistent=True,
+                    anonymized_telemetry=False
                 )
             )
 
@@ -751,9 +752,20 @@ class VectorStore:
     ) -> Dict[str, Any]:
         """Query the vector store for similar documents"""
         self.logger.debug(f"Querying with: {query_text}, n_results={n_results}, where={where}")
+
+        requested_results = max(1, int(n_results))
         
         # For small collections, query all documents
         collection_size = len(self.collection.get()["ids"])
+        if collection_size == 0:
+            self.logger.debug("Skipping Chroma query because the collection is empty")
+            return {
+                "ids": [[]],
+                "documents": [[]],
+                "metadatas": [[]],
+                "distances": [[]]
+            }
+
         if collection_size <= 30: #TODO make configurable
             results = self.collection.query(
                 query_texts=[query_text],
@@ -764,7 +776,7 @@ class VectorStore:
             similarities = [1 - d for d in distances]
             sorted_indices = sorted(range(len(similarities)), 
                               key=lambda k: similarities[k],
-                              reverse=True)[:n_results]
+                              reverse=True)[:requested_results]
         
             # Truncate results to requested n_results
             results["documents"] = [[results["documents"][0][i] for i in sorted_indices]]
@@ -774,7 +786,7 @@ class VectorStore:
         else:
             results =  self.collection.query(
                 query_texts=[query_text],
-                n_results=n_results,
+                n_results=min(requested_results, collection_size),
                 where=where
             )
         

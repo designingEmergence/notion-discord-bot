@@ -39,7 +39,7 @@ class Retriever:
 
         results = await self.vector_store.query(
             query_text=query,
-            n_results=self.num_results,
+            n_results=max(1, int(self.num_results)),
             where=where_filter
         )
         return results

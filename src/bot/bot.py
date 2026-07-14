@@ -328,7 +328,8 @@ class NotionBot(commands.Bot):
                 path="chroma_db",
                 settings=chromadb.Settings(
                     allow_reset=True,
-                    is_persistent=True
+                    is_persistent=True,
+                    anonymized_telemetry=False
                 )
             )
             self.logger.debug("Getting collection list...")
@@ -498,7 +499,7 @@ class NotionBot(commands.Bot):
             self.logger.warning(f"Error processing conversation history: {str(e)}")
             # Fallback: use recent history without similarity filtering
             relevant_docs = await self.retriever.get_context_for_query(query)
-            return relevant_doc_context, []
+            return relevant_docs, []
     
 
     async def on_message(self, message):
