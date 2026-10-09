@@ -88,15 +88,25 @@ def build_printer_status_embed() -> discord.Embed:
         supply for supply in supplies
         if isinstance(supply.get("percentage"), (int, float)) and supply["percentage"] <= LOW_INK_THRESHOLD
     ]
-    stale = _is_stale(data.get("timestamp"))
-    state = _friendly_state(data.get("printer_state"))
+    # last_checked is when the monitor last ran; timestamp is the last good reading
+    stale = _is_stale(data.get("last_checked", data.get("timestamp")))
+    offline = data.get("online") is False
+    state = "Offline" if offline else _friendly_state(data.get("printer_state"))
 
-    if low_supplies:
-        headline = "⚠️ Ink pantry alert! Time to give these cartridges some love."
-        color = 0xE67E22
+    if offline:
+        headline = "🔌 The printer seems to be offline"
+        if _parse_timestamp(data.get("timestamp")):
+            headline += f" (last seen {_time_ago(data.get('timestamp'))})"
+        headline += "."
+        if supplies:
+            headline += " These are the last known ink levels."
+        color = 0x95A5A6
     elif stale:
         headline = "🕰️ This is the last known ink report; the scout has not checked in recently."
         color = 0xF1C40F
+    elif low_supplies:
+        headline = "⚠️ Ink pantry alert! Time to give these cartridges some love."
+        color = 0xE67E22
     else:
         headline = "✨ Ink levels are looking shipshape."
         color = 0x2ECC71
@@ -114,7 +124,7 @@ def build_printer_status_embed() -> discord.Embed:
             value=", ".join(str(supply.get("name") or supply.get("color") or "Unknown supply") for supply in low_supplies),
             inline=False,
         )
-    footer = f"🕐 Last updated: {_time_ago(data.get('timestamp'))}"
+    footer = f"🕐 Ink levels from: {_time_ago(data.get('timestamp'))}"
     if stale:
         footer += " (may be out of date)"
     embed.set_footer(text=footer)

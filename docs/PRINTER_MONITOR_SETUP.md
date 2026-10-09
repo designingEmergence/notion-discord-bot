@@ -66,5 +66,10 @@ docker compose up -d --build bot
 ## Behaviour
 
 The command displays all supply levels returned by the printer. Supplies at or
-below 20% are highlighted. A snapshot older than 15 minutes is labelled as
-possibly out of date; it remains the last known good report after failed polls.
+below 20% are highlighted.
+
+When a poll fails, the poller keeps the last good supply levels but sets
+`online: false` and records `last_checked` and `last_error`; the command then
+says the printer seems to be offline and shows the last known levels. If the
+poller itself has not run for 15 minutes, the report is labelled as possibly
+out of date.

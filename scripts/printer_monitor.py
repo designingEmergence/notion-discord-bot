@@ -99,7 +99,7 @@ def parse_ipptool_output(output: str) -> dict:
         })
 
     return {
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "timestamp": _utc_now(),
         "printer_uri": PRINTER_URI,
         "printer_state": printer_state,
         "printer_state_reasons": _csv_values(_attribute_value(output, "printer-state-reasons")),
@@ -125,7 +125,7 @@ def query_printer() -> dict:
 
 
 def write_snapshot(snapshot: dict) -> None:
-    """Replace the snapshot only after a complete, successful query."""
+    """Atomically replace the snapshot file."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
         mode="w", dir=DATA_DIR, prefix=".printer_status.", delete=False, encoding="utf-8"
@@ -140,15 +140,51 @@ def write_snapshot(snapshot: dict) -> None:
     os.replace(temporary_path, DATA_FILE)
 
 
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_snapshot() -> dict:
+    """Return the previous snapshot, or an empty one if there is none."""
+    try:
+        with DATA_FILE.open(encoding="utf-8") as snapshot_file:
+            snapshot = json.load(snapshot_file)
+        if isinstance(snapshot, dict):
+            return snapshot
+    except (OSError, ValueError):
+        pass
+    return {"supplies": []}
+
+
+def mark_offline(error: Exception) -> dict:
+    """Record a failed poll while keeping the last good supply levels."""
+    snapshot = read_snapshot()
+    snapshot.update({
+        "last_checked": _utc_now(),
+        "online": False,
+        "last_error": str(error),
+    })
+    return snapshot
+
+
 def main() -> int:
     try:
         snapshot = query_printer()
+        snapshot.update({
+            "last_checked": snapshot["timestamp"],
+            "online": True,
+            "last_error": None,
+        })
         write_snapshot(snapshot)
         print(f"Updated {DATA_FILE} at {snapshot['timestamp']}")
         return 0
     except (OSError, subprocess.SubprocessError, ValueError) as error:
-        # Deliberately do not touch DATA_FILE: callers need the last good value.
-        print(f"Printer poll failed; keeping existing snapshot: {error}", file=sys.stderr)
+        # Keep the last good levels ("timestamp") but record that this poll failed
+        print(f"Printer poll failed; keeping last known levels: {error}", file=sys.stderr)
+        try:
+            write_snapshot(mark_offline(error))
+        except OSError as write_error:
+            print(f"Could not record failed poll: {write_error}", file=sys.stderr)
         return 1
 
 
