@@ -60,10 +60,41 @@ def _is_stale(timestamp: Any) -> bool:
     return parsed is None or (datetime.now(timezone.utc) - parsed).total_seconds() > STALE_THRESHOLD_SECONDS
 
 
+BAR_SEGMENTS = 10
+EMPTY_SEGMENT = "⬜"
+# Matched against the supply name first, then its reported colour
+SEGMENT_BY_INK = {
+    "cyan": "🟦", "#00ffff": "🟦",
+    "magenta": "🟪", "#ff00ff": "🟪",
+    "yellow": "🟨", "#ffff00": "🟨",
+    "black": "⬛", "#000000": "⬛",
+}
+DEFAULT_SEGMENT = "🟩"
+
+
+def _segment_for(supply: dict[str, Any]) -> str:
+    name = str(supply.get("name") or "").lower()
+    for ink, segment in SEGMENT_BY_INK.items():
+        if not ink.startswith("#") and ink in name:
+            return segment
+    return SEGMENT_BY_INK.get(str(supply.get("color") or "").lower(), DEFAULT_SEGMENT)
+
+
+def _level_bar(supply: dict[str, Any], percentage: float) -> str:
+    filled = round(max(0, min(100, percentage)) / 100 * BAR_SEGMENTS)
+    if percentage > 0:
+        filled = max(1, filled)  # never show an empty bar while ink remains
+    return _segment_for(supply) * filled + EMPTY_SEGMENT * (BAR_SEGMENTS - filled)
+
+
 def _supply_label(supply: dict[str, Any]) -> str:
     name = str(supply.get("name") or supply.get("color") or "Unknown supply")
+    name = name[:1].upper() + name[1:]
     percentage = supply.get("percentage")
-    return f"{name}: **{percentage}%**" if isinstance(percentage, (int, float)) else f"{name}: **level unknown**"
+    if not isinstance(percentage, (int, float)):
+        return f"**{name}**: level unknown"
+    warning = " ⚠️" if percentage <= LOW_INK_THRESHOLD else ""
+    return f"**{name}**: {percentage}%{warning}\n{_level_bar(supply, percentage)}"
 
 
 def _friendly_state(value: Any) -> str:

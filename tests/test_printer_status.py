@@ -88,6 +88,20 @@ class PrinterStatusEmbedTests(unittest.TestCase):
         })
         self.assertEqual(embed.description, "🔌 The printer seems to be offline.")
 
+    def test_levels_shown_as_coloured_bars(self):
+        embed = self._embed_for(self._snapshot(supplies=[
+            {"name": "cyan ink", "percentage": 50, "color": "#00FFFF"},
+            {"name": "black ink", "percentage": 20, "color": "#000000"},
+            {"name": "Photo ink", "percentage": 3, "color": "#123456"},
+            {"name": "magenta ink", "percentage": None},
+        ]))
+        levels = embed.fields[1].value
+        self.assertIn("**Cyan ink**: 50%\n" + "🟦" * 5 + "⬜" * 5, levels)
+        self.assertIn("**Black ink**: 20% ⚠️\n" + "⬛" * 2 + "⬜" * 8, levels)
+        # Unknown colour falls back to green, and a nearly empty supply keeps one segment
+        self.assertIn("🟩" + "⬜" * 9, levels)
+        self.assertIn("**Magenta ink**: level unknown", levels)
+
 
 class PrinterMonitorTests(unittest.TestCase):
     def setUp(self):
