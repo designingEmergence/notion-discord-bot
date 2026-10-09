@@ -31,6 +31,15 @@ PRINTER_URI=ipp://printer.local/ipp/print
 # Optional: PRINTER_POLL_TIMEOUT_SECONDS=30
 ```
 
+If the printer's IPv4 address can change, use its link-local IPv6 address
+instead. It is derived from the printer's MAC address, so it stays the same
+without a router reservation (find it with `ip -6 neigh`; `%25eth0` is the
+server's network interface):
+
+```ini
+PRINTER_URI=ipp://[fe80::5265:f3ff:fef7:5bd0%25eth0]/ipp/print
+```
+
 Keep this file root-owned (`sudo chmod 600 /etc/default/printer-monitor`) if the
 URI contains credentials. The printer must expose `marker-*` attributes over
 IPP. The poller treats a missing response or missing supplies as a failure and
