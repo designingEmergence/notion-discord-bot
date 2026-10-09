@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll Post Office printer ink status every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=printer-monitor.service
+
+[Install]
+WantedBy=timers.target
