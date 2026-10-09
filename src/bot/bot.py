@@ -8,6 +8,7 @@ from rag.vectorstore import VectorStore
 from rag.retriever import Retriever
 from config import ConfigManager
 from bot.busyness import build_busyness_embed
+from bot.replies import split_message, ERROR_REPLY
 from openai import AsyncOpenAI
 import numpy as np
 from functools import wraps
@@ -539,9 +540,14 @@ class NotionBot(commands.Bot):
                             messages=messages
                         )
 
-                        await message.reply(response.choices[0].message.content)
-                    except Exception as e:
-                        await message.reply(f"❌ Error: {str(e)}")
+                        answer = response.choices[0].message.content or ""
+                        chunks = split_message(answer) or [ERROR_REPLY]
+                        await message.reply(chunks[0])
+                        for chunk in chunks[1:]:
+                            await message.channel.send(chunk)
+                    except Exception:
+                        self.logger.exception("Error answering question")
+                        await message.reply(ERROR_REPLY)
             
             else:
                 welcome_message = await self.config.get("welcome_message")
