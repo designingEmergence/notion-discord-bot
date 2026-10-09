@@ -29,7 +29,7 @@ REQUEST = """{
   ATTR charset attributes-charset utf-8
   ATTR language attributes-natural-language en
   ATTR uri printer-uri $uri
-  ATTR keyword requested-attributes printer-state printer-state-reasons marker-names marker-levels marker-high-levels marker-colors marker-types
+  ATTR keyword requested-attributes printer-state,printer-state-reasons,marker-names,marker-levels,marker-high-levels,marker-colors,marker-types
   STATUS successful-ok
   DISPLAY printer-state
   DISPLAY printer-state-reasons
@@ -135,6 +135,8 @@ def write_snapshot(snapshot: dict) -> None:
         temporary.flush()
         os.fsync(temporary.fileno())
         temporary_path = Path(temporary.name)
+    # NamedTemporaryFile creates 0600 files; the bot container must read it
+    os.chmod(temporary_path, 0o644)
     os.replace(temporary_path, DATA_FILE)
 
 
